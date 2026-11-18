@@ -76,13 +76,14 @@ python3 scripts/build_web.py --edition quanjushijie   # 仅全剧视界版
 
 工作流只能手动触发，推送和 PR 不再自动运行检查。
 
-发布流程：提升 `pubspec.yaml` 的 `version`，在 `CHANGELOG.md` 写好同名版本一节（标题如 `## 0.2.72+79`，会写入 Release 说明），推送到 `main` / `master`，再在 Actions 中手动运行 **Build app packages**。运行前有四个开关：
+发布流程：提升 `pubspec.yaml` 的 `version`，在 `CHANGELOG.md` 写好同名版本一节（标题如 `## 0.2.72+79`，会写入 Release 说明），推送到 `main` / `master`，再在 Actions 中手动运行 **Build app packages**。运行前有这些开关：
 
 | 开关 | 默认 | 作用 |
 | --- | --- | --- |
 | `with_ios` | 关 | 要不要出 iOS 包。macOS runner 按 10 倍分钟计费，Free 额度一个月只够跑一次，所以默认不出；Android / Windows / 网页版不受影响 |
 | `with_macos` | 关 | 要不要出 macOS dmg。同样走 macOS runner、同样 10 倍计费，所以单独一个开关，需要时再勾 |
 | `with_windows` | 关 | 要不要出 Windows x64 ZIP。默认只出 Android，需要 Windows 包时再勾 |
+| `with_desktop_engines` | 开 | 要不要编 Windows / Linux 版番茄引擎。它和 `with_windows` 无关：这两个引擎主要给「本地服务版」（`web` job，每次都跑）用，勾掉后 web 包里对应平台就没有番茄引擎（番茄源降级提示，其余站源不受影响），省下两台 runner。Android / iOS 的引擎由各自 job 单独编，不受影响 |
 | `full_variants` | 关 | iOS / macOS 出几个版本。不勾只出全剧视界（`--all-sources`），勾上再补短剧视界，省一半 macOS 计费分钟 |
 | `republish` | 开 | 同一版本已有 Release / tag 时覆盖重发；取消勾选则直接失败，不进入构建 |
 

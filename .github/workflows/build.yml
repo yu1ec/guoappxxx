@@ -15,6 +15,10 @@ on:
         description: '构建 Windows 包（默认关，只出 Android；需要 Windows x64 zip 时再勾）'
         type: boolean
         default: false
+      with_desktop_engines:
+        description: '编译 Windows / Linux 版番茄引擎（默认开：本地服务版 zip 要用；不关心 web 包里的番茄源可关掉省两台 runner）'
+        type: boolean
+        default: true
       full_variants:
         description: 'iOS / macOS 出两个版本（短剧视界 + 全剧视界）；不勾只出全剧视界，省一半 macOS 计费分钟'
         type: boolean
@@ -89,16 +93,27 @@ jobs:
       - uses: actions/checkout@v4
       - id: engines
         env:
+          INPUT_WITH_DESKTOP_ENGINES: ${{ inputs.with_desktop_engines }}
           INPUT_WITH_MACOS: ${{ inputs.with_macos }}
         run: |
           set -euo pipefail
-          # 番茄引擎的构建矩阵：Windows / Linux 常驻，macOS 那一格只在真出
-          # macOS 包时才加。macOS runner 按 10 倍分钟计费，没勾 with_macos
-          # 却先白烧一台苹果机器编引擎（而产物根本没人用）最不划算。
-          entries='{"runner":"windows-latest","platform":"windows","arguments":""}'
-          entries="$entries"',{"runner":"ubuntu-latest","platform":"linux","arguments":""}'
+          # 番茄引擎的构建矩阵按「谁真正要用」来算，而不是跟着包名走：
+          #   * windows / linux 版由 web job（本地服务版，每次必跑）消费，也顺带
+          #     给 windows 包用，所以默认常驻；勾掉 with_desktop_engines 可整体
+          #     跳过——代价只是 web 包里对应平台没有番茄引擎（番茄源降级提示，
+          #     其余站源不受影响）；
+          #   * macOS 那一格只在真出 macOS 包时才加。macOS runner 按 10 倍分钟
+          #     计费，没勾 with_macos 却先白烧一台苹果机器编引擎（而产物根本没人用）
+          #     最不划算；
+          #   * 三项全关时矩阵为空，engines job 整体跳过（见该 job 的 if）。
+          entries=''
+          if [ "${INPUT_WITH_DESKTOP_ENGINES:-true}" = "true" ]; then
+            entries='{"runner":"windows-latest","platform":"windows","arguments":""}'
+            entries="$entries"',{"runner":"ubuntu-latest","platform":"linux","arguments":""}'
+          fi
           if [ "${INPUT_WITH_MACOS:-false}" = "true" ]; then
-            entries="$entries"',{"runner":"macos-latest","platform":"macos","arguments":"--macos-universal"}'
+            if [ -n "$entries" ]; then entries="$entries,"; fi
+            entries="$entries"'{"runner":"macos-latest","platform":"macos","arguments":"--macos-universal"}'
           fi
           echo "engine_matrix=[$entries]" >> "$GITHUB_OUTPUT"
       - id: version
@@ -146,9 +161,11 @@ jobs:
   #   * fanqie_engine：可执行，Windows / macOS / Linux 由宿主进程拉起；
   #   * libfanqie_shim：Android 的 .so 与 iOS 的静态库。
   # 这一步失败不拦发布——缺引擎的平台番茄源照样显示，只是播放时提示引擎未就绪。
-  # 要编哪些平台由 prepare 算出来的矩阵决定：macOS 只在勾了 with_macos 时才有。
+  # 要编哪些平台由 prepare 算出来的矩阵决定：windows / linux 跟随 with_desktop_engines，
+  # macOS 跟随 with_macos；矩阵为空时整个 job 跳过（GitHub 不接受空矩阵）。
   engines:
     needs: prepare
+    if: ${{ needs.prepare.outputs.engine_matrix != '[]' }}
     # 引擎编不出来不该连坐：windows / web / macos 只是拿不到对应平台的引擎，
     # 番茄源会降级提示，其余站源、其余产物照常。
     continue-on-error: true
@@ -363,7 +380,8 @@ jobs:
 
   windows:
     needs: [prepare, engines]
-    if: ${{ inputs.with_windows }}
+    # !cancelled()：engines 被整体跳过（关掉桌面引擎）时本 job 仍要照常跑。
+    if: ${{ !cancelled() && inputs.with_windows }}
     runs-on: windows-latest
     timeout-minutes: 45
     strategy: *editions
@@ -374,6 +392,9 @@ jobs:
         with:
           name: fanqie-engine-windows
           path: build/fanqie/windows
+      - name: 提示本次 Windows 包不含番茄引擎
+        if: ${{ !inputs.with_desktop_engines }}
+        run: echo "::warning::未勾选 with_desktop_engines，本次 Windows 包内不含番茄引擎；Windows 上番茄源会提示引擎未就绪，其余站源不受影响。"
       - *setup-go
       - *setup-python
       - *setup-flutter
@@ -490,7 +511,7 @@ jobs:
   # 所以只出一个 dmg，Intel 机器同样能原生跑。
   macos:
     needs: [prepare, engines]
-    if: ${{ inputs.with_macos }}
+    if: ${{ !cancelled() && inputs.with_macos }}
     continue-on-error: true
     runs-on: macos-latest
     timeout-minutes: 60
@@ -540,12 +561,15 @@ jobs:
 
   web:
     needs: [prepare, engines]
+    # 同上：engines 可能被跳过，不能因此连坐掉网页版。
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       # 本地服务版要带齐三个平台的番茄引擎；缺哪个平台就跳过哪个平台的引擎，
       # 包仍然能出，只是那个平台的番茄源会提示引擎未就绪。
+      # windows / linux 引擎跟随 with_desktop_engines 开关（见 prepare 算的矩阵）。
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
@@ -556,6 +580,9 @@ jobs:
         with:
           name: fanqie-engine-linux
           path: build/fanqie/linux
+      - name: 提示本包不含 Windows / Linux 引擎
+        if: ${{ !inputs.with_desktop_engines }}
+        run: echo "::warning::未勾选 with_desktop_engines，本地服务版 zip 内不含 Windows / Linux 版番茄引擎；这两个平台上跑本地服务版时番茄源会提示引擎未就绪，其余站源不受影响。"
       # macOS 引擎只在勾了 with_macos 时才编（见 prepare 算的矩阵），这里跟着
       # 开关走，免得平白多出一条「artifact 不存在」的红色报错。
       - uses: actions/download-artifact@v4
