@@ -737,8 +737,22 @@ jobs:
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+          # Secret 里混进换行/空格/引号，或者误贴了整段 URL、"bot" 前缀、
+          # 又或者复制时被截断，都会让 api.telegram.org 找不到这个 bot 路径，
+          # 于是返回 404（不是 401）。先规范化再校验，省得只看到一句 curl 404。
+          token="$(printf '%s' "${TELEGRAM_BOT_TOKEN:-}" \
+            | tr -d '\r\n\t ' \
+            | sed -e 's#.*/bot##' -e 's#^bot##' -e 's#/.*$##' \
+                  -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+          chat_id="$(printf '%s' "${TELEGRAM_CHAT_ID:-}" | tr -d '\r\n\t ')"
+          if [ -z "$token" ] || [ -z "$chat_id" ]; then
             echo "未配置 Telegram，跳过推送。"
+            exit 0
+          fi
+          if ! printf '%s' "$token" | grep -Eq '^[0-9]{5,}:[A-Za-z0-9_-]{20,}$'; then
+            echo "::error::TELEGRAM_BOT_TOKEN 不是一个合法 bot token（应为「数字:字母数字」共约 46 字符）。"
+            echo "::error::请到 @BotFather 用 /token 重新复制，覆盖仓库 Settings → Secrets 里的同名 Secret；"
+            echo "::error::注意不要带引号、空格、换行，也不要带 https://api.telegram.org/bot 前缀。"
             exit 0
           fi
           changes="$(cat changes.md)"
@@ -748,6 +762,20 @@ jobs:
             text="$(printf '%s\n\n更新内容：\n\n%s' "$text" "${changes:0:3500}")"
           fi
           text="$(printf '%s\n\n下载：%s' "$text" "$url")"
-          curl -fsS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=${text}" >/dev/null
+          # 不用 -f：失败时要把 Telegram 返回的 JSON 打出来，否则只有一个 HTTP 码。
+          body="$(mktemp)"
+          code="$(curl -sS -o "$body" -w '%{http_code}' \
+            "https://api.telegram.org/bot${token}/sendMessage" \
+            --data-urlencode "chat_id=${chat_id}" \
+            --data-urlencode "text=${text}" || true)"
+          if [ "$code" != "200" ]; then
+            echo "::warning::Telegram 推送失败（HTTP ${code}）：$(cat "$body")"
+            case "$code" in
+              401) echo "::warning::token 已失效或被撤销，用 @BotFather 的 /token 重新生成后更新 Secret。" ;;
+              404) echo "::warning::token 格式不对（缺冒号/被截断/带多余字符），api.telegram.org 认不出这个 bot。" ;;
+              400) echo "::warning::chat_id 不对，或机器人不在该频道/群里（先把它拉进群并设为管理员）。" ;;
+              403) echo "::warning::机器人被移出该频道/群，或无发言权限。" ;;
+            esac
+            exit 0
+          fi
+          rm -f "$body"
