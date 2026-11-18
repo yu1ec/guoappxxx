@@ -625,25 +625,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: 检查 Release 令牌是否有写权限
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          # .permissions 反映的正是「这个令牌」对仓库的实际权限，比看 x-accepted-oauth-scopes
-          # 头可靠（GITHUB_TOKEN 那段头通常是空的）。没有 push 就一定发不出 Release，
-          # 不如在下载、打包之前就红掉，省得白跑一遍再看到 403。
-          push=$(gh api "repos/$REPO" --jq '.permissions.push // false')
-          echo "该令牌对 $REPO 的写权限：$push"
-          if [ "$push" != "true" ]; then
-            echo "::error::当前令牌对仓库没有写权限，Release 一定发不出去。"
-            echo "::error::请到 Settings → Actions → General → Workflow permissions 选"
-            echo "::error::「Read and write permissions」，或在仓库 Secrets 配 RELEASE_TOKEN"
-            echo "::error::（带 repo 权限的个人访问令牌）；改完必须重新触发一次新的运行，"
-            echo "::error::点 Re-run 重跑不生效——重跑会沿用原运行当时的令牌权限。"
-            exit 1
-          fi
+      # 这里曾经加过一道「提前检查令牌写权限」的关卡（gh api repos/... --jq .permissions.push），
+      # 结果每次都误报：GITHUB_TOKEN 是 GitHub App 的 installation token，GET /repos 返回的
+      # permissions 是「角色」语义（admin/maintain/push/triage/pull），跟 job 里申请到的
+      # contents: write 不是一回事，即使 runner 日志明写「Contents: write」也照样返回
+      # push=false。x-accepted-oauth-scopes 头对 GITHUB_TOKEN 又是空的。两条路都判不准，
+      # 所以不再预判，直接放手让下面的 gh release create 去写；403 时由 publishing_failed
+      # 打出现成的处理办法。代价只是失败时多花一次下载 artifact 的时间。
       - uses: actions/download-artifact@v4
         with:
           path: release
