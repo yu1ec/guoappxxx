@@ -73,7 +73,7 @@ func nativeCopyTree(ctx context.Context, source, target string) error {
 		}
 		destination := filepath.Join(target, relative)
 		if entry.IsDir() {
-			return os.MkdirAll(destination, 0700)
+			return os.MkdirAll(destination, 0755)
 		}
 		input, err := os.Open(path)
 		if err != nil {
@@ -174,7 +174,7 @@ func (engine *nativeEngine) moveDownloads(ctx context.Context, parent string) er
 		return saveErr
 	}
 	source := manager.root
-	if err := os.Mkdir(target, 0700); err != nil {
+	if err := os.Mkdir(target, 0755); err != nil {
 		return errors.New("无法创建目标目录，请检查权限或选择其他位置")
 	}
 	if err := nativeCopyTree(ctx, source, target); err != nil {

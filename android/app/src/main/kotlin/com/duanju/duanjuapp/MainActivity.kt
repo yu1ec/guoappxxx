@@ -275,6 +275,14 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         }
                         "hasAllFilesAccess" -> result.success(hasAllFilesAccess())
+                        "publicDownloadDirectory" -> {
+                            @Suppress("DEPRECATION")
+                            result.success(
+                                Environment.getExternalStoragePublicDirectory(
+                                    Environment.DIRECTORY_DOWNLOADS
+                                ).absolutePath
+                            )
+                        }
                         "requestStorageAccess" -> {
                             requestStorageAccess()
                             result.success(null)

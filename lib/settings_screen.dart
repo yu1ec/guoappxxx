@@ -373,9 +373,9 @@ class _StorageScreenState extends State<StorageScreen>
     final support = await getApplicationSupportDirectory();
     final directories = <String, String>{support.path: '应用内部存储'};
     if (Platform.isAndroid) {
-      final public = await getExternalStorageDirectory();
-      if (public != null) {
-        directories['${public.path}/Download'] = '系统 Download 目录';
+      final download = await publicDownloadDirectory();
+      if (download != null) {
+        directories[download] = '系统 Download 目录';
       }
       final external = await getExternalStorageDirectories() ?? [];
       for (var i = 0; i < external.length; i++) {

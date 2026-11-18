@@ -27,6 +27,20 @@ Future<void> scanMediaFile(String path) async {
   } catch (_) {}
 }
 
+Future<String?> publicDownloadDirectory() async {
+  if (!Platform.isAndroid) return null;
+  try {
+    final path = await const MethodChannel(
+      'duanju/device',
+    ).invokeMethod<String>('publicDownloadDirectory');
+    if (path != null && path.startsWith('/') && !directoryHiddenFromFilesApp(path)) {
+      return path;
+    }
+  } catch (_) {}
+  const fallback = '/storage/emulated/0/Download';
+  return directoryHiddenFromFilesApp(fallback) ? null : fallback;
+}
+
 bool directoryHiddenFromFilesApp(String path) {
   final normalized = path.replaceAll('\\', '/');
   return normalized.contains('/Android/data/') ||

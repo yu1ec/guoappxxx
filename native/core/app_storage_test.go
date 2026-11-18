@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -142,5 +143,46 @@ func TestMigrationRejectsContainmentAndSymbolicLinks(t *testing.T) {
 	}
 	if _, err := os.Stat(outside); err != nil {
 		t.Fatal("removed linked directory")
+	}
+}
+
+func TestExposeRootOpensSharedDownloadDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix directory permissions")
+	}
+	engine, err := newNativeEngine(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(engine.downloads.close)
+	root := filepath.Join(t.TempDir(), "quanjushijie-downloads")
+	child := filepath.Join(root, "show")
+	if err := os.MkdirAll(child, 0700); err != nil {
+		t.Fatal(err)
+	}
+	media := filepath.Join(child, "001.mp4")
+	if err := os.WriteFile(media, []byte("video"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	engine.downloads.root = root
+	engine.downloads.exposeRoot()
+	for _, path := range []string{root, child} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm()&0055 != 0055 {
+			t.Fatalf("%s still private: %v %v", path, info.Mode(), err)
+		}
+	}
+	info, err := os.Stat(media)
+	if err != nil || info.Mode().Perm()&0044 != 0044 {
+		t.Fatalf("media still private: %v %v", info.Mode(), err)
+	}
+	target := t.TempDir()
+	if err := engine.moveDownloads(context.Background(), target); err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(target, "quanjushijie-downloads")
+	info, err = os.Stat(moved)
+	if err != nil || info.Mode().Perm()&0055 != 0055 {
+		t.Fatalf("migrated directory still private: %v %v", info.Mode(), err)
 	}
 }

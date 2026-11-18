@@ -16,6 +16,73 @@ import 'remote_widgets.dart';
 import 'settings_screen.dart';
 import 'widgets.dart';
 
+VoidCallback? _embeddedDownloadsOpener;
+
+void registerEmbeddedDownloadsOpener(VoidCallback opener) {
+  _embeddedDownloadsOpener = opener;
+}
+
+void unregisterEmbeddedDownloadsOpener(VoidCallback opener) {
+  if (_embeddedDownloadsOpener == opener) {
+    _embeddedDownloadsOpener = null;
+  }
+}
+
+void showDownloadEnqueueNotice(
+  BuildContext context, {
+  required int added,
+  required AppRepository repository,
+  required LocalStore store,
+}) {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final origin = context;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      duration: const Duration(seconds: 4),
+      persist: false,
+      content: Text(
+        added == 0 ? '所选集数已在下载列表中' : '已加入 $added 集，已有任务自动跳过',
+      ),
+      action: SnackBarAction(
+        label: '查看',
+        onPressed: () => _openDownloadsView(
+          origin: origin,
+          navigator: navigator,
+          repository: repository,
+          store: store,
+        ),
+      ),
+    ),
+  );
+}
+
+void _openDownloadsView({
+  required BuildContext origin,
+  required NavigatorState navigator,
+  required AppRepository repository,
+  required LocalStore store,
+}) {
+  if (!navigator.mounted) return;
+  if (origin.mounted && (ModalRoute.of(origin)?.isCurrent ?? false)) {
+    navigator.push(_downloadsRoute(repository, store));
+    return;
+  }
+  navigator.popUntil((route) => route.isFirst);
+  final opener = _embeddedDownloadsOpener;
+  if (opener != null) {
+    opener();
+    return;
+  }
+  navigator.push(_downloadsRoute(repository, store));
+}
+
+MaterialPageRoute<void> _downloadsRoute(
+  AppRepository repository,
+  LocalStore store,
+) => MaterialPageRoute<void>(
+  builder: (_) => DownloadsScreen(repository: repository, store: store),
+);
+
 class DownloadsScreen extends StatefulWidget {
   const DownloadsScreen({
     super.key,

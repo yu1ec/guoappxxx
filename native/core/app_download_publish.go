@@ -183,6 +183,16 @@ func (manager *nativeDownloads) publishCompletedLocked(record *nativeDownloadRec
 func (manager *nativeDownloads) exposeRoot() {
 	rel, err := filepath.Rel(manager.engine.directory, manager.root)
 	if err != nil || strings.HasPrefix(rel, "..") {
-		_ = os.Chmod(manager.root, 0755)
+		_ = filepath.WalkDir(manager.root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil || entry.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+			if entry.IsDir() {
+				_ = os.Chmod(path, 0755)
+			} else {
+				_ = os.Chmod(path, 0644)
+			}
+			return nil
+		})
 	}
 }

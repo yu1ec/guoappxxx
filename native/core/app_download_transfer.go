@@ -72,7 +72,7 @@ func (manager *nativeDownloads) transferMedia(ctx context.Context, job nativeDow
 			return nativeDownloadResult{}, errors.New("无法替换旧的下载文件")
 		}
 	}
-	if err := os.MkdirAll(directory, 0700); err != nil {
+	if err := os.MkdirAll(directory, 0755); err != nil {
 		return nativeDownloadResult{}, errors.New("无法创建下载文件，请检查存储空间")
 	}
 	if err := nativeDownloadWrite(marker, []byte(hex.EncodeToString(fingerprint[:]))); err != nil {

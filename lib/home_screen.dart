@@ -477,6 +477,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _followUpdater = FollowUpdater(widget.repository, widget.store)..start();
     widget.store.addListener(_sourcesChanged);
     widget.repository.catalogUpdates.addListener(_metadataChanged);
+    registerEmbeddedDownloadsOpener(_openDownloadsTab);
     if (widget.store.sources.isNotEmpty) {
       _load(useCache: true);
       _loadCategories();
@@ -487,6 +488,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    unregisterEmbeddedDownloadsOpener(_openDownloadsTab);
     _updater.removeListener(_updateChanged);
     _updater.dispose();
     _followUpdater.dispose();
@@ -751,6 +753,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectionMode = false;
     _selectedDramas.clear();
   });
+
+  void _openDownloadsTab() {
+    if (!mounted || !widget.store.canDownload) return;
+    _changeTab(3);
+  }
 
   void _cancelSelection() => setState(() {
     _selectionMode = false;

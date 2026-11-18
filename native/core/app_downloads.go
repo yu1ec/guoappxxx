@@ -106,7 +106,7 @@ func newNativeDownloads(engine *nativeEngine) *nativeDownloads {
 }
 
 func (manager *nativeDownloads) load() error {
-	if err := os.MkdirAll(manager.root, 0700); err != nil {
+	if err := os.MkdirAll(manager.root, 0755); err != nil {
 		return errors.New("无法创建下载目录，请检查存储空间和权限")
 	}
 	manager.exposeRoot()
