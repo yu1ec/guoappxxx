@@ -11,6 +11,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fixtures.dart';
 
+class StubMediaExecutor implements MediaExecutor {
+  final commands = <List<String>>[];
+
+  @override
+  Future<MediaProbe> probe(String file) async => fixtureProbe();
+
+  @override
+  Future<void> run(
+    List<String> arguments, {
+    double duration = 0,
+    void Function(double)? progress,
+  }) async {
+    commands.add(List<String>.from(arguments));
+    await File(arguments.last).writeAsBytes(List<int>.filled(4096, 7));
+    progress?.call(1);
+  }
+
+  @override
+  Future<void> cancel() async {}
+}
+
 class ProcessMediaExecutor implements MediaExecutor {
   final commands = <List<String>>[];
   Process? _process;
@@ -72,6 +93,8 @@ class FileRepository extends FixtureRepository {
   final List<String> files;
   final List<DownloadJob> jobs;
   bool leased = false;
+  final finalized = <String>[];
+  void Function(String jobId)? finalizeHook;
   void Function()? onLocalPlayback;
   @override
   Future<String> downloadDirectory() async => root;
@@ -88,6 +111,12 @@ class FileRepository extends FixtureRepository {
 
   @override
   Future<List<DownloadJob>> downloads() async => jobs;
+  @override
+  Future<void> finalizeStreamDownload(String jobId) async {
+    finalized.add(jobId);
+    finalizeHook?.call(jobId);
+  }
+
   @override
   Future<PlaybackPlan?> localPlayback(Drama drama, Episode episode) async {
     onLocalPlayback?.call();
@@ -199,6 +228,61 @@ void main() {
       );
     },
   );
+
+  test('maybeRemux skips completed mp4 and finalizes m3u8 jobs', () async {
+    final directory = await Directory.systemTemp.createTemp('zgj-remux-');
+    SharedPreferences.setMockInitialValues({});
+    final store = LocalStore(await SharedPreferences.getInstance());
+    final drama = const Drama(id: 'hongguo:remux', source: 'hongguo', title: '封装');
+    final hlsDir = Directory('${directory.path}/hls-job');
+    await hlsDir.create();
+    final m3u8 = File('${hlsDir.path}/index.m3u8');
+    await m3u8.writeAsString('#EXTM3U\n#EXT-X-ENDLIST\n');
+    final mp4Dir = Directory('${directory.path}/mp4-job');
+    await mp4Dir.create();
+  final mp4Only = File('${mp4Dir.path}/media.mp4');
+    await mp4Only.writeAsBytes(const [1, 2, 3]);
+    final jobs = [
+      DownloadJob(
+        id: 'remux-hls',
+        drama: drama,
+        episode: Episode({'id': '1', 'currentEpisode': 1}, 1),
+        state: 'completed',
+      ),
+      DownloadJob(
+        id: 'remux-mp4',
+        drama: drama,
+        episode: Episode({'id': '2', 'currentEpisode': 2}, 2),
+        state: 'completed',
+      ),
+    ];
+    final paths = [m3u8.path, mp4Only.path];
+    final repository = FileRepository(directory.path, paths, jobs)
+      ..finalizeHook = (jobId) {
+        if (jobId == 'remux-hls') {
+          paths[0] = '${hlsDir.path}/media.mp4';
+        }
+      };
+    final executor = StubMediaExecutor();
+    final library = MediaLibrary(repository, store, executor: executor);
+    try {
+      await library.maybeRemuxStreams();
+      expect(repository.finalized, ['remux-hls']);
+      expect(executor.commands, isNotEmpty);
+      expect(executor.commands.first, contains(m3u8.path));
+      expect(
+        executor.commands.first.last,
+        '${hlsDir.path}/.media.mp4.remux',
+      );
+      await library.maybeRemuxStreams();
+      expect(repository.finalized, ['remux-hls']);
+      expect(executor.commands.length, 1);
+    } finally {
+      library.dispose();
+      store.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
 
   test(
     'cancelling while resolving local media releases the lease without starting FFmpeg',

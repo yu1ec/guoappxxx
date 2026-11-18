@@ -187,6 +187,7 @@ abstract class AppRepository {
       (await storage())['directory'] as String? ?? '';
   Future<void> moveDownloads(String directory) async =>
       throw AppFailure('当前环境不支持迁移');
+  Future<void> finalizeStreamDownload(String jobId) async {}
   Future<int> workLease(String id, String command) async => 0;
   bool get supportsDownloads => false;
   Future<List<DownloadJob>> downloads() async => [];
@@ -629,6 +630,12 @@ class NativeRepository extends AppRepository {
   }
 
   @override
+  Future<void> finalizeStreamDownload(String jobId) async {
+    _downloadPermission();
+    await _call({'action': 'finalizeStreamDownload', 'jobId': jobId});
+  }
+
+  @override
   Future<int> workLease(String id, String command) async => intValue(
     (await _call({
       'action': 'workLease',
@@ -702,6 +709,7 @@ class NativeRepository extends AppRepository {
             'storage',
             'downloadDirectory',
             'moveDownloads',
+            'finalizeStreamDownload',
             'workLease',
           }.contains(action)) {
         _downloadPermission();

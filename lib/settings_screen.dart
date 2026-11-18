@@ -14,6 +14,8 @@ import 'profiles_screen.dart';
 import 'app_build.dart';
 import 'sources_screen.dart';
 import 'widgets.dart';
+import 'package:duanju_app/xigua/storage_access.dart';
+
 import 'resource_settings_screen.dart';
 import 'lan_screen.dart';
 import 'diary_service.dart';
@@ -212,7 +214,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ListTile(
                   leading: const Icon(Icons.folder_outlined),
                   title: const Text('下载目录与空间'),
-                  subtitle: const Text('查看存储用量、迁移已下载文件'),
+                  subtitle: const Text('自选保存位置；流文件下载完成后自动封装为 mp4'),
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute<void>(
@@ -338,39 +340,67 @@ class _StorageScreenState extends State<StorageScreen> {
     }
   }
 
-  Future<void> _move() async {
-    String? parent;
-    if (Platform.isAndroid || Platform.isIOS) {
-      final support = await getApplicationSupportDirectory();
-      final directories = <String, String>{support.path: '应用内部存储'};
-      if (Platform.isAndroid) {
-        final external = await getExternalStorageDirectories() ?? [];
-        for (var i = 0; i < external.length; i++) {
-          directories[external[i].path] = i == 0
-              ? '设备共享存储（应用目录）'
-              : 'SD 卡 ${i + 1}（应用目录）';
+  static const _customDirectory = '__custom__';
+
+  Future<String?> _pickCustomDirectory() async {
+    if (Platform.isAndroid) {
+      final allowed = await ensureStorageAccess(context);
+      if (!allowed) {
+        if (mounted) {
+          setState(
+            () => _error = '未授予「所有文件访问」权限，无法写入自定义目录',
+          );
         }
-      } else {
-        final documents = await getApplicationDocumentsDirectory();
-        directories[documents.path] = '文件 App 可见目录';
+        return null;
       }
-      if (!mounted) return;
-      parent = await showDialog<String>(
-        context: context,
-        builder: (context) => SimpleDialog(
-          title: const Text('选择下载位置'),
-          children: [
-            for (final entry in directories.entries)
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, entry.key),
-                child: Text(entry.value),
-              ),
-          ],
-        ),
-      );
-    } else {
-      parent = await FilePicker.getDirectoryPath(dialogTitle: '选择下载保存位置');
     }
+    return FilePicker.getDirectoryPath(dialogTitle: '选择下载保存位置');
+  }
+
+  Future<String?> _pickDownloadParent() async {
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return _pickCustomDirectory();
+    }
+    final support = await getApplicationSupportDirectory();
+    final directories = <String, String>{support.path: '应用内部存储'};
+    if (Platform.isAndroid) {
+      final external = await getExternalStorageDirectories() ?? [];
+      for (var i = 0; i < external.length; i++) {
+        directories[external[i].path] = i == 0
+            ? '设备共享存储（应用目录）'
+            : 'SD 卡 ${i + 1}（应用目录）';
+      }
+    } else {
+      final documents = await getApplicationDocumentsDirectory();
+      directories[documents.path] = '文件 App 可见目录';
+    }
+    if (!mounted) return null;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('选择下载位置'),
+        children: [
+          for (final entry in directories.entries)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, entry.key),
+              child: Text(entry.value),
+            ),
+          const Divider(),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, _customDirectory),
+            child: const Text('自定义目录…'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return null;
+    if (choice != _customDirectory) return choice;
+    return _pickCustomDirectory();
+  }
+
+  Future<void> _move() async {
+    if (!mounted) return;
+    final parent = await _pickDownloadParent();
     if (parent == null || !mounted) return;
     final yes = await showDialog<bool>(
       context: context,
@@ -438,7 +468,10 @@ class _StorageScreenState extends State<StorageScreen> {
                   label: const Text('复制路径'),
                 ),
                 const SizedBox(height: 20),
-                const Text('在下载页删除不需要的分集，在本地媒体页删除合并成品或 Emby 导出，可释放空间。'),
+                const Text(
+                  'HLS 等流文件下载完成后会自动封装为 mp4，便于在文件管理器中打开。\n'
+                  '在下载页删除不需要的分集，在本地媒体页删除合并成品或 Emby 导出，可释放空间。',
+                ),
               ],
               if (_busy || (_info == null && _error == null))
                 const Padding(

@@ -197,12 +197,12 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy: &editions
+    # CI 默认只出全剧视界（--all-sources，全部站源），不再顺带编短剧视界；
+    # 需要仅红果的短剧视界时在本地跑 python scripts/build_android.py（不带参数）。
+    strategy:
       fail-fast: false
       matrix:
         include:
-          - edition: duanjushijie
-            arguments: ''
           - edition: quanjushijie
             arguments: '--all-sources'
     steps:
@@ -384,7 +384,14 @@ jobs:
     if: ${{ !cancelled() && inputs.with_windows }}
     runs-on: windows-latest
     timeout-minutes: 45
-    strategy: *editions
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - edition: duanjushijie
+            arguments: ''
+          - edition: quanjushijie
+            arguments: '--all-sources'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

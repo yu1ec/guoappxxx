@@ -163,7 +163,8 @@ class MediaLibrary extends ChangeNotifier {
   String? root;
   List<LocalMediaItem> _items = [];
   final _skipped = <String>{};
-  bool busy = false, _checking = false, _cancelled = false, _suspended = false;
+  bool busy = false, _checking = false, _remuxChecking = false, _cancelled = false, _suspended = false;
+  final _remuxing = <String>{};
   bool get suspended => _suspended;
   set suspended(bool value) {
     _suspended = value;
@@ -188,6 +189,12 @@ class MediaLibrary extends ChangeNotifier {
         }),
       );
     }
+    if (Platform.isAndroid && store.canDownload) {
+      library._timer = Timer.periodic(
+        const Duration(seconds: 8),
+        (_) => unawaited(library.maybeRemuxStreams()),
+      );
+    }
     if (!Platform.isAndroid) {
       final automatic = MediaLibrary(
         repository is NativeRepository
@@ -199,7 +206,10 @@ class MediaLibrary extends ChangeNotifier {
       library._automatic = automatic;
       library._timer = Timer.periodic(
         const Duration(seconds: 8),
-        (_) => unawaited(automatic.maybeExport()),
+        (_) {
+          unawaited(automatic.maybeExport());
+          unawaited(automatic.maybeRemuxStreams());
+        },
       );
     }
   }
@@ -526,6 +536,107 @@ class MediaLibrary extends ChangeNotifier {
         notifyListeners();
       }
     }, sources: jobs.map((job) => job.drama.source).toSet());
+  }
+
+  Future<void> _remuxToMp4(PlaybackPlan plan, String staging, String output) async {
+    final input = <String>[];
+    if (plan.decryptionKey.isNotEmpty) {
+      input.addAll(['-decryption_key', plan.decryptionKey]);
+    }
+    if (path.extension(plan.url).toLowerCase() == '.m3u8') {
+      input.addAll(['-allowed_extensions', 'ALL', '-extension_picky', '0']);
+    }
+    await executor.run([
+      ...input,
+      '-i',
+      plan.url,
+      '-map',
+      '0:v:0',
+      '-map',
+      '0:a:0?',
+      '-c',
+      'copy',
+      '-map_metadata',
+      '-1',
+      '-avoid_negative_ts',
+      'make_zero',
+      staging,
+    ]);
+    _check();
+    final probe = await executor.probe(staging);
+    _check();
+    verifyMediaDuration(probe, 0);
+    final staged = File(staging);
+    if (await File(output).exists()) await File(output).delete();
+    await staged.rename(output);
+  }
+
+  Future<void> _remuxJob(DownloadJob job) async {
+    await _task('封装下载视频', (_) async {
+      final plan = await repository.localPlayback(job.drama, job.episode);
+      _check();
+      if (plan == null ||
+          !plan.local ||
+          path.extension(plan.url).toLowerCase() != '.m3u8') {
+        return;
+      }
+      final directory = path.dirname(plan.url);
+      final output = path.join(directory, 'media.mp4');
+      final staging = path.join(directory, '.media.mp4.remux');
+      try {
+        status = '封装第 ${job.episode.number} 集';
+        notifyListeners();
+        await _remuxToMp4(plan, staging, output);
+        await repository.finalizeStreamDownload(job.id);
+      } finally {
+        final staged = File(staging);
+        if (await staged.exists()) await staged.delete();
+      }
+    }, sources: {job.drama.source});
+  }
+
+  Future<void> maybeRemuxStreams() async {
+    if (_remuxChecking ||
+        busy ||
+        suspended ||
+        DateTime.now().isBefore(_retryAfter)) {
+      return;
+    }
+    _remuxChecking = true;
+    try {
+      if (automaticWorker) await store.reload();
+      if (!store.canDownload) return;
+      final jobs =
+          (await repository.downloads()).where((job) => job.completed).toList();
+      final pending = <DownloadJob>[];
+      for (final job in jobs) {
+        if (_remuxing.contains(job.id)) continue;
+        final plan = await repository.localPlayback(job.drama, job.episode);
+        if (plan != null &&
+            plan.local &&
+            path.extension(plan.url).toLowerCase() == '.m3u8') {
+          pending.add(job);
+        }
+      }
+      if (pending.isEmpty) return;
+      if (Platform.isAndroid) {
+        await BackgroundDownloads.ensureStarted();
+      }
+      for (final job in pending) {
+        if (_remuxing.contains(job.id)) continue;
+        _remuxing.add(job.id);
+        try {
+          await _remuxJob(job);
+        } finally {
+          _remuxing.remove(job.id);
+        }
+      }
+    } catch (failure) {
+      _retryAfter = DateTime.now().add(const Duration(minutes: 2));
+      error = failure.toString();
+    } finally {
+      _remuxChecking = false;
+    }
   }
 
   Future<void> maybeExport() async {

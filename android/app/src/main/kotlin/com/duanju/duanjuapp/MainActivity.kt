@@ -6,6 +6,7 @@ import android.app.ActivityManager
 import android.app.PictureInPictureParams
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.BatteryManager
 import android.os.PowerManager
 import android.os.SystemClock
@@ -29,6 +30,40 @@ import io.flutter.embedding.engine.FlutterShellArgs
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private fun hasAllFilesAccess(): Boolean = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+            Environment.isExternalStorageManager()
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
+            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                PackageManager.PERMISSION_GRANTED
+        else -> true
+    }
+
+  private fun requestStorageAccess() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      runCatching {
+        startActivity(
+          Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+            data = Uri.parse("package:$packageName")
+          }
+        )
+      }.onFailure {
+        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+      }
+      return
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      @Suppress("DEPRECATION")
+      requestPermissions(
+        arrayOf(
+          android.Manifest.permission.READ_EXTERNAL_STORAGE,
+          android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+        ),
+        90210,
+      )
+    }
+  }
+
     private var headroomReadAt = 0L
     private var thermalHeadroom: Double? = null
     private var deviceChannel: MethodChannel? = null
@@ -237,6 +272,11 @@ class MainActivity : FlutterActivity() {
                             lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                             window.attributes = lp
                             result.success(true)
+                        }
+                        "hasAllFilesAccess" -> result.success(hasAllFilesAccess())
+                        "requestStorageAccess" -> {
+                            requestStorageAccess()
+                            result.success(null)
                         }
                         "openExternalPlayer" -> {
                             val url = call.argument<String>("url")
