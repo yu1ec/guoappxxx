@@ -11,6 +11,10 @@ on:
         description: '构建 macOS 包（同样走 macOS runner、同样 10 倍计费；默认关，需要 dmg 时再勾）'
         type: boolean
         default: false
+      with_windows:
+        description: '构建 Windows 包（默认关，只出 Android；需要 Windows x64 zip 时再勾）'
+        type: boolean
+        default: false
       full_variants:
         description: 'iOS / macOS 出两个版本（短剧视界 + 全剧视界）；不勾只出全剧视界，省一半 macOS 计费分钟'
         type: boolean
@@ -359,6 +363,7 @@ jobs:
 
   windows:
     needs: [prepare, engines]
+    if: ${{ inputs.with_windows }}
     runs-on: windows-latest
     timeout-minutes: 45
     strategy: *editions
@@ -574,9 +579,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # macOS 分钟最容易被账单额度掐掉，iOS / macOS job 也可能直接没有出包（见两个开关）。
-  # 这里显式列出各 job 的 result 而不是单纯依赖 needs：iOS、macOS 跳过/失败只影响
-  # 它自己，Android、Windows、网页版照常发布；只有这几个失败才真正拦住发布。
+  # macOS 分钟最容易被账单额度掐掉，iOS / macOS / Windows job 也可能直接没有出包
+  # （见三个开关）。这里显式列出各 job 的 result 而不是单纯依赖 needs：iOS、macOS
+  # 跳过/失败只影响它自己，Android、网页版照常发布；Windows 未勾选时是 skipped，
+  # 勾了却失败才算真的拦住发布。
   release:
     needs: [checks, prepare, android, windows, ios, macos, web]
     if: >-
@@ -584,7 +590,7 @@ jobs:
           needs.prepare.result == 'success' &&
           needs.checks.result == 'success' &&
           needs.android.result == 'success' &&
-          needs.windows.result == 'success' &&
+          (needs.windows.result == 'success' || needs.windows.result == 'skipped') &&
           needs.web.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -687,6 +693,11 @@ jobs:
           if [ "$dmg_count" -gt 0 ] && [ "$duanju_dmg" -eq 0 ]; then
             echo "::warning::本次 macOS 只出了全剧视界（full_variants 未勾选）。"
             printf '\n注意：本次 macOS 只出了全剧视界（为节省 macOS 计费分钟），短剧视界 dmg 需另行构建。\n' >> notes.md
+          fi
+          zip_count=$(find release -maxdepth 1 -name '*-windows-x64.zip' | wc -l)
+          if [ "$zip_count" -eq 0 ]; then
+            echo "::warning::本次发布未包含 Windows 包（未勾选 with_windows）。"
+            printf '\n注意：本次发布未包含 Windows 包（with_windows 未勾选），上面 Windows 一节本次不适用。\n' >> notes.md
           fi
           if [ "$EXISTS_RELEASE" = "1" ] || [ "$EXISTS_TAG" = "1" ]; then
             printf '\n本次为重复发布：已用同名包覆盖此前的 %s 旧资产。\n' "$TAG" >> notes.md

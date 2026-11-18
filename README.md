@@ -76,12 +76,13 @@ python3 scripts/build_web.py --edition quanjushijie   # 仅全剧视界版
 
 工作流只能手动触发，推送和 PR 不再自动运行检查。
 
-发布流程：提升 `pubspec.yaml` 的 `version`，在 `CHANGELOG.md` 写好同名版本一节（标题如 `## 0.2.72+79`，会写入 Release 说明），推送到 `main` / `master`，再在 Actions 中手动运行 **Build app packages**。运行前有三个开关：
+发布流程：提升 `pubspec.yaml` 的 `version`，在 `CHANGELOG.md` 写好同名版本一节（标题如 `## 0.2.72+79`，会写入 Release 说明），推送到 `main` / `master`，再在 Actions 中手动运行 **Build app packages**。运行前有四个开关：
 
 | 开关 | 默认 | 作用 |
 | --- | --- | --- |
 | `with_ios` | 关 | 要不要出 iOS 包。macOS runner 按 10 倍分钟计费，Free 额度一个月只够跑一次，所以默认不出；Android / Windows / 网页版不受影响 |
 | `with_macos` | 关 | 要不要出 macOS dmg。同样走 macOS runner、同样 10 倍计费，所以单独一个开关，需要时再勾 |
+| `with_windows` | 关 | 要不要出 Windows x64 ZIP。默认只出 Android，需要 Windows 包时再勾 |
 | `full_variants` | 关 | iOS / macOS 出几个版本。不勾只出全剧视界（`--all-sources`），勾上再补短剧视界，省一半 macOS 计费分钟 |
 | `republish` | 开 | 同一版本已有 Release / tag 时覆盖重发；取消勾选则直接失败，不进入构建 |
 
@@ -90,12 +91,12 @@ python3 scripts/build_web.py --edition quanjushijie   # 仅全剧视界版
 | 产物 | 内容 |
 | --- | --- |
 | `*-android` | 三种架构 APK，必须使用发布证书签名并通过指纹校验 |
-| `*-windows` | Windows x64 ZIP |
+| `*-windows` | Windows x64 ZIP（勾了 `with_windows` 才有） |
 | `ios-unsigned` | arm64 iPhone 未签名 IPA，下载后自行签名安装（勾了 `with_ios` 才有） |
 | `macos` | 通用 dmg（arm64 + x86_64），ad-hoc 签名，未公证（勾了 `with_macos` 才有） |
 | `web` | `guoappweb.zip`，短剧视界 / 全剧视界 本地服务版合集 |
 
-checks（格式、分析、测试不阻塞）、Android、Windows、网页版全部成功后才创建 Release；**iOS、macOS 跳过或失败只影响它们自己**，其余平台照常发布，Release 说明里会注明「本次未包含 iOS / macOS 包」或「只出了全剧视界」。重复发布时先删除同名 Release 与 tag 再按当前提交重建，删除失败则退化为覆盖同名资产。手动发布流程为开发快照，尚未完成首次运行验证。
+checks（格式、分析、测试不阻塞）、Android、网页版全部成功后才创建 Release；**iOS、macOS 跳过或失败只影响它们自己**，其余平台照常发布，Release 说明里会注明「本次未包含 iOS / macOS 包」或「只出了全剧视界」；Windows 未勾选时跳过、勾了却失败才拦发布，说明里同样会注明本次没有 Windows 包。重复发布时先删除同名 Release 与 tag 再按当前提交重建，删除失败则退化为覆盖同名资产。手动发布流程为开发快照，尚未完成首次运行验证。
 
 Android 签名只使用仓库 Secrets：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`；同时需要配置仓库变量 `ANDROID_CERT_SHA256`（证书 SHA-256，冒号和大小写不限）。缺少任意一项都会发布失败。CI 通过环境变量把签名传给 Gradle；本机构建使用 `android/key.properties`。`key.properties` 和证书文件不入库。
 
