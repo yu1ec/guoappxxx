@@ -604,13 +604,18 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          headers=$(curl -sS -D - -o /dev/null \
-            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO" || true)
-          accepted=$(printf '%s\n' "$headers" | tr -d '\r' | awk -F': ' 'tolower($1)=="x-accepted-oauth-scopes"{print $2}')
-          echo "该仓库 Release 接口要求的权限：$accepted"
-          if printf '%s' "$accepted" | grep -qi "repo\|contents"; then :; else
-            echo "::warning::拿不到 API 的权限头，无法预处理判断，等下一步实际创建时再说。"
+          # .permissions 反映的正是「这个令牌」对仓库的实际权限，比看 x-accepted-oauth-scopes
+          # 头可靠（GITHUB_TOKEN 那段头通常是空的）。没有 push 就一定发不出 Release，
+          # 不如在下载、打包之前就红掉，省得白跑一遍再看到 403。
+          push=$(gh api "repos/$REPO" --jq '.permissions.push // false')
+          echo "该令牌对 $REPO 的写权限：$push"
+          if [ "$push" != "true" ]; then
+            echo "::error::当前令牌对仓库没有写权限，Release 一定发不出去。"
+            echo "::error::请到 Settings → Actions → General → Workflow permissions 选"
+            echo "::error::「Read and write permissions」，或在仓库 Secrets 配 RELEASE_TOKEN"
+            echo "::error::（带 repo 权限的个人访问令牌）；改完必须重新触发一次新的运行，"
+            echo "::error::点 Re-run 重跑不生效——重跑会沿用原运行当时的令牌权限。"
+            exit 1
           fi
       - uses: actions/download-artifact@v4
         with:
@@ -707,7 +712,7 @@ jobs:
           # 再删 tag ref；任何一步失败都退到下面的「更新现有 Release」兜底。
           if [ "$EXISTS_RELEASE" = "1" ]; then
             echo "删除已存在的 Release $TAG …"
-            gh release delete "$TAG" --yes --cleanup-artifacts || true
+            gh release delete "$TAG" --yes --cleanup-tag || true
           fi
           if [ "$EXISTS_TAG" = "1" ]; then
             echo "删除已存在的远端 tag $TAG …"
