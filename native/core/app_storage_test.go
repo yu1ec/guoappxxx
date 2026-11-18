@@ -31,6 +31,23 @@ func storageFixture(t *testing.T) (*nativeEngine, string) {
 	return engine, id
 }
 
+func TestLoadPublishesCompletedMp4IntoShowFolder(t *testing.T) {
+	engine, id := storageFixture(t)
+	restarted := newNativeDownloads(engine)
+	t.Cleanup(restarted.close)
+	record := restarted.jobs[id]
+	if record == nil || record.File != "001.mp4" || record.Folder == "" {
+		t.Fatalf("not published: %+v", record)
+	}
+	body, err := os.ReadFile(filepath.Join(restarted.root, record.Folder, record.File))
+	if err != nil || string(body) != "synthetic-video" {
+		t.Fatalf("visible mp4: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(restarted.root, id)); !os.IsNotExist(err) {
+		t.Fatal("hash directory still present")
+	}
+}
+
 func TestDownloadMigrationPreservesMediaAndRestartLocation(t *testing.T) {
 	engine, id := storageFixture(t)
 	old := engine.downloads.root

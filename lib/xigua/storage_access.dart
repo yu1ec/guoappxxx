@@ -18,6 +18,23 @@ Future<bool> hasAllFilesAccess() async {
   }
 }
 
+Future<void> scanMediaFile(String path) async {
+  if (!Platform.isAndroid || path.isEmpty) return;
+  try {
+    await const MethodChannel(
+      'duanju/device',
+    ).invokeMethod<void>('scanMediaFile', path);
+  } catch (_) {}
+}
+
+bool directoryHiddenFromFilesApp(String path) {
+  final normalized = path.replaceAll('\\', '/');
+  return normalized.contains('/Android/data/') ||
+      normalized.contains('/Android/media/') ||
+      normalized.contains('/data/user/') ||
+      normalized.contains('/data/data/');
+}
+
 /// 跳系统「所有文件访问」授权页（Android 11+）或弹运行时权限对话框。
 Future<void> requestStorageAccess() async {
   if (!Platform.isAndroid) return;
@@ -29,7 +46,7 @@ Future<void> requestStorageAccess() async {
 }
 
 /// 未授权时弹引导对话框；用户点「去授权」后跳系统设置。
-/// 返回引导结束时是否已授权（授权需用户在系统页操作，返回应用后需重新检测）。
+/// 已有权限，或用户已前往系统授权页时返回 true；取消则返回 false。
 Future<bool> ensureStorageAccess(BuildContext context) async {
   if (await hasAllFilesAccess()) return true;
   final open = await showGeneralDialog<bool>(
@@ -102,6 +119,7 @@ Future<bool> ensureStorageAccess(BuildContext context) async {
       ),
     ),
   );
-  if (open == true) await requestStorageAccess();
-  return false;
+  if (open != true) return false;
+  await requestStorageAccess();
+  return true;
 }

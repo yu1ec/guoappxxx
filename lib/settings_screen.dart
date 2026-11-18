@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -316,14 +317,32 @@ class StorageScreen extends StatefulWidget {
   State<StorageScreen> createState() => _StorageScreenState();
 }
 
-class _StorageScreenState extends State<StorageScreen> {
+class _StorageScreenState extends State<StorageScreen>
+    with WidgetsBindingObserver {
   Map<String, dynamic>? _info;
   String? _error;
   bool _busy = false;
+  Completer<void>? _resumed;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _resumed != null &&
+        !_resumed!.isCompleted) {
+      _resumed!.complete();
+    }
   }
 
   Future<void> _refresh() async {
@@ -343,17 +362,7 @@ class _StorageScreenState extends State<StorageScreen> {
   static const _customDirectory = '__custom__';
 
   Future<String?> _pickCustomDirectory() async {
-    if (Platform.isAndroid) {
-      final allowed = await ensureStorageAccess(context);
-      if (!allowed) {
-        if (mounted) {
-          setState(
-            () => _error = '未授予「所有文件访问」权限，无法写入自定义目录',
-          );
-        }
-        return null;
-      }
-    }
+    if (Platform.isAndroid && !await _ensurePublicAccess()) return null;
     return FilePicker.getDirectoryPath(dialogTitle: '选择下载保存位置');
   }
 
@@ -364,11 +373,15 @@ class _StorageScreenState extends State<StorageScreen> {
     final support = await getApplicationSupportDirectory();
     final directories = <String, String>{support.path: '应用内部存储'};
     if (Platform.isAndroid) {
+      final public = await getExternalStorageDirectory();
+      if (public != null) {
+        directories['${public.path}/Download'] = '系统 Download 目录';
+      }
       final external = await getExternalStorageDirectories() ?? [];
       for (var i = 0; i < external.length; i++) {
         directories[external[i].path] = i == 0
-            ? '设备共享存储（应用目录）'
-            : 'SD 卡 ${i + 1}（应用目录）';
+            ? '应用私有目录（文件管理器看不到）'
+            : 'SD 卡 ${i + 1}（应用目录，文件管理器看不到）';
       }
     } else {
       final documents = await getApplicationDocumentsDirectory();
@@ -394,14 +407,79 @@ class _StorageScreenState extends State<StorageScreen> {
       ),
     );
     if (choice == null) return null;
-    if (choice != _customDirectory) return choice;
+    if (choice != _customDirectory) {
+      if (Platform.isAndroid &&
+          !directoryHiddenFromFilesApp(choice) &&
+          !await _ensurePublicAccess()) {
+        return null;
+      }
+      return choice;
+    }
     return _pickCustomDirectory();
+  }
+
+  Future<bool> _ensurePublicAccess() async {
+    if (await hasAllFilesAccess()) return true;
+    final proceeded = await ensureStorageAccess(context);
+    if (!proceeded) {
+      if (mounted) {
+        setState(
+          () => _error = '未授予「所有文件访问」权限，无法写入公共目录',
+        );
+      }
+      return false;
+    }
+    if (!await hasAllFilesAccess()) {
+      final resumed = Completer<void>();
+      _resumed = resumed;
+      await resumed.future.timeout(
+        const Duration(minutes: 5),
+        onTimeout: () {},
+      );
+      _resumed = null;
+    }
+    if (!mounted) return false;
+    if (await hasAllFilesAccess()) return true;
+    setState(
+      () => _error = '未授予「所有文件访问」权限。授权后请再次选择目录。',
+    );
+    return false;
+  }
+
+  Future<bool> _confirmHiddenDirectory(String parent) async {
+    if (!directoryHiddenFromFilesApp(parent)) return true;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('此目录文件管理器看不到'),
+        content: const Text(
+          'Android 11 起系统文件管理器无法打开应用私有目录（Android/data）。'
+          '下载仍会成功，但你无法在文件管理器里看到视频。'
+          '若要拷贝或用其他播放器打开，请改选「系统 Download 目录」或「自定义目录」。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('重选'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('仍然使用'),
+          ),
+        ],
+      ),
+    );
+    return yes == true;
   }
 
   Future<void> _move() async {
     if (!mounted) return;
     final parent = await _pickDownloadParent();
     if (parent == null || !mounted) return;
+    if (!await _confirmHiddenDirectory(parent) || !mounted) return;
+    if (!directoryHiddenFromFilesApp(parent)) {
+      await Directory(parent).create(recursive: true);
+    }
     final yes = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -469,9 +547,22 @@ class _StorageScreenState extends State<StorageScreen> {
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  'HLS 等流文件下载完成后会自动封装为 mp4，便于在文件管理器中打开。\n'
+                  '完成的视频会保存为「剧名/001.mp4」。HLS 等流文件会先封装成 mp4 再放入该目录。\n'
+                  'Android 11 起系统文件管理器打不开 Android/data 下的应用目录；'
+                  '要用文件管理器查看或拷贝，请改到「自定义目录」（例如 Download）。\n'
                   '在下载页删除不需要的分集，在本地媒体页删除合并成品或 Emby 导出，可释放空间。',
                 ),
+                if (directoryHiddenFromFilesApp(
+                  _info!['directory'] as String? ?? '',
+                )) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '当前目录位于应用私有空间，系统文件管理器通常看不到里面的视频。',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
               ],
               if (_busy || (_info == null && _error == null))
                 const Padding(

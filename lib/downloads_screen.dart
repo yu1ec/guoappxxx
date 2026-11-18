@@ -9,6 +9,7 @@ import 'core_bridge.dart';
 import 'download_collections.dart';
 import 'local_store.dart';
 import 'local_media_screen.dart';
+import 'media_library.dart';
 import 'models.dart';
 import 'player_screen.dart';
 import 'remote_widgets.dart';
@@ -94,6 +95,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           _selected.retainAll(jobs.map((job) => job.id));
           _error = null;
         });
+        if (jobs.any((job) => job.completed)) {
+          unawaited(MediaLibrary.current?.maybeRemuxStreams());
+        }
       }
     } catch (error) {
       if (mounted && _allowed) setState(() => _error = error.toString());

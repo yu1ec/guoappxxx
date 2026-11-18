@@ -4,6 +4,7 @@ import io.flutter.embedding.android.FlutterActivity
 import android.app.UiModeManager
 import android.app.ActivityManager
 import android.app.PictureInPictureParams
+import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -277,6 +278,20 @@ class MainActivity : FlutterActivity() {
                         "requestStorageAccess" -> {
                             requestStorageAccess()
                             result.success(null)
+                        }
+                        "scanMediaFile" -> {
+                            val path = call.arguments as? String
+                            if (path.isNullOrBlank()) {
+                                result.error("invalid_path", "缺少要扫描的文件路径", null)
+                            } else {
+                                MediaScannerConnection.scanFile(
+                                    this,
+                                    arrayOf(path),
+                                    arrayOf("video/mp4"),
+                                    null,
+                                )
+                                result.success(null)
+                            }
                         }
                         "openExternalPlayer" -> {
                             val url = call.argument<String>("url")

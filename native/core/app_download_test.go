@@ -101,7 +101,11 @@ func TestNativeDownloadsOriginalBytesPersistenceAndLocalPriority(t *testing.T) {
 		}
 	}
 	id := nativeDownloadID(input.Drama.ID, 1)
-	if err := os.Remove(filepath.Join(reopened.root, id, "media.mp4")); err != nil {
+	plan, found, err := reopened.localPlan(input.Drama.ID, 1)
+	if err != nil || !found || plan.URL == "" {
+		t.Fatalf("local plan: %+v %v %v", plan, found, err)
+	}
+	if err := os.Remove(plan.URL); err != nil {
 		t.Fatal(err)
 	}
 	for attempt := 0; attempt < 2; attempt++ {

@@ -116,6 +116,9 @@ func (engine *nativeEngine) moveDownloads(ctx context.Context, parent string) er
 		return errors.New("请选择有效的保存目录")
 	}
 	manager := engine.downloads
+	if err := os.MkdirAll(parent, 0755); err != nil {
+		return errors.New("无法打开所选目录")
+	}
 	resolved, err := filepath.EvalSymlinks(parent)
 	if err != nil {
 		return errors.New("无法打开所选目录")
@@ -188,6 +191,7 @@ func (engine *nativeEngine) moveDownloads(ctx context.Context, parent string) er
 		return errors.New("保存下载目录失败，原文件已保留")
 	}
 	manager.root = target
+	manager.exposeRoot()
 	_ = os.RemoveAll(source)
 	return nil
 }

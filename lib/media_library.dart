@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:duanju_app/xigua/storage_access.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
@@ -165,6 +166,7 @@ class MediaLibrary extends ChangeNotifier {
   final _skipped = <String>{};
   bool busy = false, _checking = false, _remuxChecking = false, _cancelled = false, _suspended = false;
   final _remuxing = <String>{};
+  final _scannedMedia = <String>{};
   bool get suspended => _suspended;
   set suspended(bool value) {
     _suspended = value;
@@ -588,6 +590,16 @@ class MediaLibrary extends ChangeNotifier {
         notifyListeners();
         await _remuxToMp4(plan, staging, output);
         await repository.finalizeStreamDownload(job.id);
+        final published = await repository.localPlayback(
+          job.drama,
+          job.episode,
+        );
+        if (published != null &&
+            published.local &&
+            path.extension(published.url).toLowerCase() == '.mp4') {
+          _scannedMedia.add(job.id);
+          await scanMediaFile(published.url);
+        }
       } finally {
         final staged = File(staging);
         if (await staged.exists()) await staged.delete();
@@ -616,6 +628,11 @@ class MediaLibrary extends ChangeNotifier {
             plan.local &&
             path.extension(plan.url).toLowerCase() == '.m3u8') {
           pending.add(job);
+        } else if (plan != null &&
+            plan.local &&
+            path.extension(plan.url).toLowerCase() == '.mp4' &&
+            _scannedMedia.add(job.id)) {
+          unawaited(scanMediaFile(plan.url));
         }
       }
       if (pending.isEmpty) return;
