@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'app_layout.dart';
+import 'episode_drag.dart';
 import 'widgets.dart';
 
 enum SwipeAction { none, brightness, episode, seek }
@@ -41,6 +42,11 @@ class PlayerInteractions extends ChangeNotifier {
     this.onSeek,
     this.holdRate = 3,
     this.seekStep = 15,
+    this.followHandEpisode = false,
+    this.canEpisodeSwipe,
+    this.onEpisodeDrag,
+    this.onEpisodeSwipeCommit,
+    this.onEpisodeDragCancel,
   }) {
     _playing = player.stream.playing.listen((playing) {
       if (!playing) cancel();
@@ -68,6 +74,13 @@ class PlayerInteractions extends ChangeNotifier {
 
   /// 左右滑动一次的快进/快退秒数，来自「滑动快进步长」偏好（默认 15 秒）。
   final int seekStep;
+
+  /// 移动端跟手切集：拖动时更新画面，抬手提交 / 回弹。
+  final bool followHandEpisode;
+  final bool Function(int direction)? canEpisodeSwipe;
+  final void Function(double progress)? onEpisodeDrag;
+  final void Function(int direction)? onEpisodeSwipeCommit;
+  final VoidCallback? onEpisodeDragCancel;
   String get _holdLabel {
     final rate = holdRate == holdRate.roundToDouble()
         ? holdRate.toInt().toString()
@@ -105,6 +118,7 @@ class PlayerInteractions extends ChangeNotifier {
   double _initialBrightness = 0.5;
   double _viewHeight = 0.0;
   Timer? _hudTimer;
+  bool _episodeDragging = false;
 
   GestureHudState get hudState => _hudState;
   double get brightness => _brightness;
@@ -228,6 +242,7 @@ class PlayerInteractions extends ChangeNotifier {
     _origin = null;
     _lastPosition = null;
     _axis = _SwipeAxis.none;
+    _resetEpisodeDrag();
     if (_brightnessActive) {
       _brightnessActive = false;
       _scheduleDismissHud();
@@ -238,6 +253,12 @@ class PlayerInteractions extends ChangeNotifier {
     }
     _endHold(silent: true);
     hint('', revealControls: false);
+  }
+
+  void _resetEpisodeDrag() {
+    if (!_episodeDragging) return;
+    _episodeDragging = false;
+    onEpisodeDragCancel?.call();
   }
 
   void pointerDown(
@@ -311,6 +332,19 @@ class PlayerInteractions extends ChangeNotifier {
         0,
         label: '${forward ? '快进' : '后退'} $seekStep 秒',
       );
+    } else if (_axis == _SwipeAxis.vertical &&
+        followHandEpisode &&
+        available()) {
+      final canNext = canEpisodeSwipe?.call(1) ?? false;
+      final canPrev = canEpisodeSwipe?.call(-1) ?? false;
+      final progress = episodeDragProgress(
+        deltaY: dy,
+        viewHeight: _viewHeight,
+        canSwipeNext: canNext,
+        canSwipePrev: canPrev,
+      );
+      _episodeDragging = progress != 0;
+      onEpisodeDrag?.call(progress);
     }
   }
 
@@ -348,10 +382,27 @@ class PlayerInteractions extends ChangeNotifier {
         _axis == _SwipeAxis.vertical &&
         !_held &&
         event.timeStamp - _started < const Duration(milliseconds: 1500)) {
-      // 短促的上下滑动：切换上一集 / 下一集（上滑下一集，下滑上一集）。
-      if (available()) {
-        hint(onEpisode(delta.dy < 0 ? 1 : -1), revealControls: false);
+      final fingerDy = _origin!.dy - (_lastPosition ?? event.localPosition).dy;
+      if (followHandEpisode) {
+        if (available()) {
+          final direction = episodeSwipeDirection(
+            deltaY: fingerDy,
+            threshold: _swipeThreshold,
+          );
+          if (direction != null && (canEpisodeSwipe?.call(direction) ?? false)) {
+            onEpisodeSwipeCommit?.call(direction);
+          } else {
+            _resetEpisodeDrag();
+          }
+        } else {
+          _resetEpisodeDrag();
+        }
+      } else if (available()) {
+        // 非跟手模式：短促上下滑直接切集（上滑下一集）。
+        hint(onEpisode(fingerDy > 0 ? 1 : -1), revealControls: false);
       }
+    } else if (_episodeDragging) {
+      _resetEpisodeDrag();
     }
 
     // 兜底：滑动途中已弹出快进/快退预览，但本次抬手既未达水平判定
@@ -368,6 +419,7 @@ class PlayerInteractions extends ChangeNotifier {
     _origin = null;
     _axis = _SwipeAxis.none;
     _brightnessActive = false;
+    _episodeDragging = false;
     _endHold();
   }
 

@@ -17,6 +17,7 @@ import 'core_bridge.dart';
 import 'diary_service.dart';
 import 'playback_diagnostics.dart';
 import 'luna_exo_player.dart';
+import 'episode_drag.dart';
 import 'danmaku_controller.dart';
 import 'danmaku_overlay.dart';
 import 'detail_screen.dart';
@@ -74,7 +75,7 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   late final Player _player;
   late final VideoController? _video;
   late final VideoEnhancementController _enhancement;
@@ -132,6 +133,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   String _loadingMessage = '正在准备播放';
   String? _error;
   String? _saveWarning;
+  double _episodeDragProgress = 0;
+  bool _episodeTransitioning = false;
+  late final AnimationController _episodeSlideController;
   PlaybackPlan? _plan;
   double _speed = 1;
   double _aspectRatio = 9 / 16;
@@ -222,6 +226,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       category: widget.detail.drama.category,
       tags: widget.detail.drama.tags,
     );
+    _episodeSlideController = AnimationController(vsync: this);
     _interactions = PlayerInteractions(
       player: _player,
       available: () =>
@@ -230,13 +235,22 @@ class _PlayerScreenState extends State<PlayerScreen>
           !_loading &&
           _error == null &&
           _foreground &&
-          !_panelOpen,
+          !_panelOpen &&
+          !_episodeTransitioning,
       baseSpeed: () => _speed,
       holdRate: preferences.holdSpeed,
       seekStep: preferences.swipeSeekSeconds,
       onTogglePlayback: _togglePlayback,
       onSeek: _seekTo,
       onFullscreen: _rotate,
+      followHandEpisode:
+          defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS,
+      canEpisodeSwipe: _canEpisodeSwipe,
+      onEpisodeDrag: _onEpisodeDrag,
+      onEpisodeSwipeCommit: (direction) =>
+          unawaited(_commitEpisodeSwipe(direction)),
+      onEpisodeDragCancel: () => unawaited(_cancelEpisodeDrag()),
       onEpisode: (direction) {
         final next = _index + direction;
         if (next < 0) return '已经是第一集';
@@ -285,14 +299,17 @@ class _PlayerScreenState extends State<PlayerScreen>
             _acceptErrors &&
             _error == null) {
           final duration = _player.state.duration;
-          if (duration <= Duration.zero ||
-              _player.state.position < duration - const Duration(seconds: 2)) {
+          final position = _player.state.position;
+          if (!playbackReachedNaturalEnd(
+            position: position,
+            duration: duration,
+          )) {
             _queueRecovery(reason: 'early_completion');
           } else if (_autoAdvance &&
               _foreground &&
               !_panelOpen &&
               _index + 1 < widget.detail.episodes.length) {
-            _play(_index + 1, showControlsOnReady: false);
+            unawaited(_autoAdvanceToNextEpisode());
           } else {
             _playIntent = false;
             _interactions.cancel();
@@ -1309,6 +1326,122 @@ class _PlayerScreenState extends State<PlayerScreen>
           _aspectRatio >= 1 &&
           MediaQuery.orientationOf(context) == Orientation.landscape);
 
+  bool _canEpisodeSwipe(int direction) {
+    if (!_mobile || _television || _closed) return false;
+    final next = _index + direction;
+    return next >= 0 && next < widget.detail.episodes.length;
+  }
+
+  void _onEpisodeDrag(double progress) {
+    if (!mounted || _closed) return;
+    setState(() => _episodeDragProgress = progress);
+  }
+
+  Future<void> _animateEpisodeProgress({
+    required double begin,
+    required double end,
+    int durationMs = 260,
+  }) async {
+    if (!mounted || _closed) return;
+    _episodeSlideController.stop();
+    _episodeSlideController.duration = Duration(
+      milliseconds: durationMs.clamp(120, 320),
+    );
+    final animation = Tween<double>(begin: begin, end: end).animate(
+      CurvedAnimation(
+        parent: _episodeSlideController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    void listener() {
+      if (mounted && !_closed) {
+        setState(() => _episodeDragProgress = animation.value);
+      }
+    }
+    animation.addListener(listener);
+    _episodeSlideController.value = 0;
+    await _episodeSlideController.forward(from: 0);
+    animation.removeListener(listener);
+    _episodeSlideController.value = 0;
+  }
+
+  Future<void> _cancelEpisodeDrag() async {
+    if (_episodeDragProgress == 0 || _episodeTransitioning) return;
+    await _animateEpisodeProgress(
+      begin: _episodeDragProgress,
+      end: 0,
+      durationMs: (180 + _episodeDragProgress.abs() * 120).round(),
+    );
+    if (mounted && !_closed) {
+      setState(() => _episodeDragProgress = 0);
+    }
+  }
+
+  Future<void> _commitEpisodeSwipe(int direction) async {
+    if (_episodeTransitioning || !_canEpisodeSwipe(direction)) {
+      await _cancelEpisodeDrag();
+      return;
+    }
+    _episodeTransitioning = true;
+    final from = _episodeDragProgress;
+    final target = direction > 0 ? 1.0 : -1.0;
+    await _animateEpisodeProgress(
+      begin: from,
+      end: target,
+      durationMs: (220 + (1 - from.abs()) * 160).round(),
+    );
+    if (!mounted || _closed) {
+      _episodeTransitioning = false;
+      return;
+    }
+    final next = _index + direction;
+    _interactions.hint(
+      '第 ${widget.detail.episodes[next].number} 集',
+      revealControls: false,
+    );
+    await _play(next, showControlsOnReady: false);
+    if (mounted && !_closed) {
+      if (_episodeDragProgress != 0) {
+        await _animateEpisodeProgress(
+          begin: _episodeDragProgress,
+          end: 0,
+          durationMs: 200,
+        );
+      }
+      setState(() {
+        _episodeTransitioning = false;
+        _episodeDragProgress = 0;
+      });
+    }
+  }
+
+  Future<void> _autoAdvanceToNextEpisode() async {
+    if (_episodeTransitioning || !_canEpisodeSwipe(1)) {
+      await _play(_index + 1, showControlsOnReady: false);
+      return;
+    }
+    _episodeTransitioning = true;
+    await _animateEpisodeProgress(begin: 0, end: 1);
+    if (!mounted || _closed) {
+      _episodeTransitioning = false;
+      return;
+    }
+    await _play(_index + 1, showControlsOnReady: false);
+    if (mounted && !_closed) {
+      if (_episodeDragProgress != 0) {
+        await _animateEpisodeProgress(
+          begin: _episodeDragProgress,
+          end: 0,
+          durationMs: 200,
+        );
+      }
+      setState(() {
+        _episodeTransitioning = false;
+        _episodeDragProgress = 0;
+      });
+    }
+  }
+
   Future<void> _rotate() async {
     if (_rotating || _television) {
       return;
@@ -1731,6 +1864,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (_pictureInPictureHandlerInstalled) {
       AppDevice.channel.setMethodCallHandler(null);
     }
+    _episodeSlideController.dispose();
     _interactions.dispose();
     _playerFocus.dispose();
     _menuRevision.dispose();
@@ -1907,6 +2041,66 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 
+  Widget _episodeSwipePreview(int direction) {
+    final index = _index + direction;
+    if (index < 0 || index >= widget.detail.episodes.length) {
+      return const ColoredBox(color: Colors.black);
+    }
+    final episode = widget.detail.episodes[index];
+    return ColoredBox(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          DramaCover(
+            drama: widget.detail.drama,
+            repository: widget.repository,
+            radius: 0,
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: .25),
+                  Colors.black.withValues(alpha: .65),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.detail.drama.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '第 ${episode.number} 集',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .88),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _videoPane(BuildContext context) {
     final videoTheme = _television
         ? televisionTheme(AppTheme.dark)
@@ -1976,14 +2170,15 @@ class _PlayerScreenState extends State<PlayerScreen>
                 ? () => _play(_index + 1)
                 : null,
           );
-    final layeredControls = Stack(
-      fit: StackFit.expand,
-      children: [
-        if (!hideOverlayForPictureInPicture)
-          DanmakuOverlay(controller: _danmaku, aspectRatio: _aspectRatio),
-        controls,
-      ],
-    );
+    final danmakuLayer = hideOverlayForPictureInPicture
+        ? const SizedBox.shrink()
+        : DanmakuOverlay(controller: _danmaku, aspectRatio: _aspectRatio);
+    final slideTransitionActive =
+        _mobile &&
+        !hideOverlayForPictureInPicture &&
+        (_episodeDragProgress != 0 || _episodeTransitioning);
+    final episodeLoadingOverlay =
+        _loading && !hideOverlayForPictureInPicture && !slideTransitionActive;
     return Theme(
       data: videoTheme,
       child: LayoutBuilder(
@@ -1998,25 +2193,73 @@ class _PlayerScreenState extends State<PlayerScreen>
               _enhancement.setViewport(pixels, television: _television);
             }
           });
+          final paneHeight = constraints.maxHeight;
+          final slideOffset = -_episodeDragProgress * paneHeight;
+          Widget videoCore(Widget overlay) {
+            if (widget.videoBuilder != null) {
+              return widget.videoBuilder!(overlay);
+            }
+            if (_player is LunaExoPlayer) {
+              return LunaExoVideoView(
+                player: _player,
+                fit: BoxFit.contain,
+                controls: (_) => overlay,
+              );
+            }
+            return Video(
+              controller: _video!,
+              fit: BoxFit.contain,
+              controls: (_) => overlay,
+            );
+          }
+
+          Widget buildSlidePane() {
+            if (!_mobile || hideOverlayForPictureInPicture) {
+              return SizedBox.expand(child: videoCore(danmakuLayer));
+            }
+            return ClipRect(
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  if (_episodeDragProgress > 0)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: paneHeight + slideOffset,
+                      height: paneHeight,
+                      child: _episodeSwipePreview(1),
+                    ),
+                  if (_episodeDragProgress < 0)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: -paneHeight + slideOffset,
+                      height: paneHeight,
+                      child: _episodeSwipePreview(-1),
+                    ),
+                  Transform.translate(
+                    offset: Offset(0, slideOffset),
+                    child: SizedBox(
+                      height: paneHeight,
+                      width: constraints.maxWidth,
+                      child: ColoredBox(
+                        color: Colors.black,
+                        child: videoCore(danmakuLayer),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
           return Stack(
             key: _videoPaneKey,
             fit: StackFit.expand,
             children: [
-              if (widget.videoBuilder != null)
-                widget.videoBuilder!(layeredControls)
-              else if (_player is LunaExoPlayer)
-                LunaExoVideoView(
-                  player: _player,
-                  fit: BoxFit.contain,
-                  controls: (_) => layeredControls,
-                )
-              else
-                Video(
-                  controller: _video!,
-                  fit: BoxFit.contain,
-                  controls: (_) => layeredControls,
-                ),
-              if (_loading && !hideOverlayForPictureInPicture)
+              buildSlidePane(),
+              if (!hideOverlayForPictureInPicture) controls,
+              if (episodeLoadingOverlay)
                 ColoredBox(
                   color: Colors.black.withValues(alpha: .78),
                   child: Center(
@@ -2027,6 +2270,31 @@ class _PlayerScreenState extends State<PlayerScreen>
                         const SizedBox(height: 16),
                         Text(_loadingMessage),
                       ],
+                    ),
+                  ),
+                ),
+              if (_loading &&
+                  slideTransitionActive &&
+                  !hideOverlayForPictureInPicture)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: SafeArea(
+                    left: false,
+                    bottom: false,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: .55),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.all(10),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                      ),
                     ),
                   ),
                 ),
