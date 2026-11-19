@@ -34,6 +34,7 @@ import 'saved_library.dart';
 import 'live_repository.dart';
 import 'live_screen.dart';
 import 'live_store.dart';
+import 'update_banner.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.repository, required this.store});
@@ -84,6 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _revealed = _revealBatch;
   int? _revealKey;
   bool _hiddenItems = false;
+  AppUpdateCoordinator? _updateCoordinator;
 
   List<SourceGroup> get _sourceGroups {
     final groups = SourceGroup.fromSources(widget.store.sources);
@@ -487,7 +489,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_updateCoordinator == null) {
+      _updateCoordinator = AppUpdateCoordinator(
+        store: widget.store,
+        currentVersion: AppLayout.versionOf(context),
+        apkAbi: AppLayout.apkAbiOf(context),
+      )..schedulePeriodic(() {
+          if (mounted) setState(() {});
+        });
+    }
+  }
+
+  @override
   void dispose() {
+    _updateCoordinator?.dispose();
     unregisterEmbeddedDownloadsOpener(_openDownloadsTab);
     _updater.removeListener(_updateChanged);
     _updater.dispose();
@@ -1083,19 +1100,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     } else if (value == 'display') {
                       _chooseDisplayMode();
                     } else if (value == 'about') {
-                      showAboutDialog(
-                        context: context,
-                        applicationName: appName,
-                        applicationVersion: AppLayout.versionOf(context),
-                        applicationIcon: const Icon(
-                          Icons.play_circle_filled_rounded,
-                          size: 48,
-                          color: Color(0xFFFF765F),
-                        ),
-                        children: [
-                          const Text('独立运行，打开即可浏览和播放。观看记录与追剧收藏保存在当前设备。'),
-                        ],
-                      );
+                      showAppAboutDialog(context, widget.store);
                     }
                   },
                   itemBuilder: (_) => [
@@ -1121,9 +1126,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Text('直播'),
                     ),
                     const PopupMenuItem(value: 'users', child: Text('用户管理')),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'settings',
-                      child: Text('设置与备份'),
+                      child: Row(
+                        children: [
+                          const Text('设置与备份'),
+                          if (_updateCoordinator?.shouldShowBanner == true) ...[
+                            const Spacer(),
+                            Text(
+                              '新版本',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                     const PopupMenuItem(value: 'display', child: Text('界面模式')),
                     const PopupMenuItem(
@@ -1138,7 +1157,28 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           body: SafeArea(
             top: false,
-            child: Row(
+            child: Column(
+              children: [
+                if (_updateCoordinator?.shouldShowBanner == true &&
+                    _updateCoordinator!.pending != null)
+                  UpdateBanner(
+                    store: widget.store,
+                    check: _updateCoordinator!.pending!,
+                    onDismissSession: () => setState(
+                      () => _updateCoordinator!.sessionDismissed = true,
+                    ),
+                    onSkipVersion: () async {
+                      final latest = _updateCoordinator!.pending?.latestVersion;
+                      if (latest != null) {
+                        await widget.store.setSkippedUpdateVersion(latest);
+                      }
+                      if (mounted) {
+                        setState(() => _updateCoordinator!.sessionDismissed = true);
+                      }
+                    },
+                  ),
+                Expanded(
+                  child: Row(
               children: [
                 if (desktop || television) ...[
                   television
@@ -1180,6 +1220,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               ? (drama) => _openDrama(drama, download: true)
                               : null,
                         ),
+                ),
+              ],
+            ),
                 ),
               ],
             ),

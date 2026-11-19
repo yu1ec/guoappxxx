@@ -48,6 +48,7 @@ class _DetailScreenState extends State<DetailScreen> {
   final _episodeAnchor = GlobalKey();
   final _detailScroll = ScrollController();
   bool _initialActionHandled = false;
+  bool _playBusy = false;
   late final int _profileEpoch;
   Widget? get _sourceDiagnostics => widget.repository.supportsSourceManagement
       ? SourceDiagnosticsButton(
@@ -218,6 +219,9 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   Future<void> _play(int index, {bool resume = false}) async {
+    if (_playBusy) {
+      return;
+    }
     final detail = _detail;
     if (detail == null ||
         index < 0 ||
@@ -226,53 +230,58 @@ class _DetailScreenState extends State<DetailScreen> {
         !widget.store.allowsSource(detail.drama.source)) {
       return;
     }
-    if (detail.episodes[index].vip &&
-        detail.drama.source != SourceSite.dsd.id) {
-      final accepted = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('这是一集 VIP 内容'),
-          content: const Text('站源可能只提供试看或限制播放。'),
-          actions: [
-            TextButton(
-              autofocus: AppLayout.isTelevision(context),
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('尝试播放'),
-            ),
-          ],
-        ),
-      );
-      if (accepted != true || !mounted) {
+    _playBusy = true;
+    try {
+      if (detail.episodes[index].vip &&
+          detail.drama.source != SourceSite.dsd.id) {
+        final accepted = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('这是一集 VIP 内容'),
+            content: const Text('站源可能只提供试看或限制播放。'),
+            actions: [
+              TextButton(
+                autofocus: AppLayout.isTelevision(context),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('尝试播放'),
+              ),
+            ],
+          ),
+        );
+        if (accepted != true || !mounted) {
+          return;
+        }
+      }
+      final saved = widget.store.watched(detail.drama.id);
+      final position =
+          resume &&
+              saved?.episode == detail.episodes[index].number &&
+              !saved!.finished
+          ? saved.position
+          : 0.0;
+      if (!mounted || _profileEpoch != widget.store.profileEpoch) {
         return;
       }
-    }
-    final saved = widget.store.watched(detail.drama.id);
-    final position =
-        resume &&
-            saved?.episode == detail.episodes[index].number &&
-            !saved!.finished
-        ? saved.position
-        : 0.0;
-    if (!mounted || _profileEpoch != widget.store.profileEpoch) {
-      return;
-    }
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PlayerScreen(
-          detail: detail,
-          initialIndex: index,
-          initialPosition: position,
-          repository: widget.repository,
-          store: widget.store,
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PlayerScreen(
+            detail: detail,
+            initialIndex: index,
+            initialPosition: position,
+            repository: widget.repository,
+            store: widget.store,
+          ),
         ),
-      ),
-    );
-    if (mounted) {
-      setState(() {});
+      );
+      if (mounted) {
+        setState(() {});
+      }
+    } finally {
+      _playBusy = false;
     }
   }
 

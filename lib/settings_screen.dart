@@ -20,6 +20,8 @@ import 'package:duanju_app/xigua/storage_access.dart';
 import 'resource_settings_screen.dart';
 import 'lan_screen.dart';
 import 'diary_service.dart';
+import 'update_banner.dart';
+import 'app_layout.dart';
 
 String storageSize(int bytes) {
   if (bytes < 0) return '暂不可用';
@@ -146,6 +148,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              AppUpdatePanel(
+                store: widget.store,
+                currentVersion: AppLayout.versionOf(context),
+                apkAbi: AppLayout.apkAbiOf(context),
+              ),
+              const Divider(),
               ListTile(
                 key: const ValueKey('lan-settings'),
                 leading: const Icon(Icons.devices_rounded),

@@ -7,7 +7,11 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 export 'app_build.dart';
 
-const appVersion = '0.2.64';
+/// 仅在无法读取安装包信息时的占位版本。
+const appVersionFallback = '0.0.0+0';
+
+String packageVersionLabel(PackageInfo info) =>
+    '${info.version}+${info.buildNumber}';
 
 ThemeData televisionTheme(ThemeData theme) {
   final colors = theme.colorScheme;
@@ -45,9 +49,14 @@ ThemeData televisionTheme(ThemeData theme) {
 }
 
 class AppDevice {
-  const AppDevice({this.television = false, this.version = appVersion});
+  const AppDevice({
+    this.television = false,
+    this.version = appVersionFallback,
+    this.apkAbi,
+  });
   final bool television;
   final String version;
+  final String? apkAbi;
   static const channel = MethodChannel('duanju/device');
 
   static Future<AppDevice> detect({
@@ -56,7 +65,7 @@ class AppDevice {
     if (defaultTargetPlatform != TargetPlatform.android) {
       try {
         final info = await PackageInfo.fromPlatform();
-        return AppDevice(version: info.version);
+        return AppDevice(version: packageVersionLabel(info));
       } catch (_) {
         return fallback;
       }
@@ -68,11 +77,13 @@ class AppDevice {
       final television = data?['television'];
       if (television is! bool) return fallback;
       final version = data?['version'];
+      final abi = data?['apkAbi'];
       return AppDevice(
         television: television,
         version: version is String && version.isNotEmpty
             ? version
             : fallback.version,
+        apkAbi: abi is String && abi.isNotEmpty ? abi : fallback.apkAbi,
       );
     } on PlatformException {
       return fallback;
@@ -147,20 +158,26 @@ class AppLayout extends InheritedWidget {
   const AppLayout({
     super.key,
     required this.television,
-    this.version = appVersion,
+    this.version = appVersionFallback,
+    this.apkAbi,
     required super.child,
   });
   final bool television;
   final String version;
+  final String? apkAbi;
 
   static bool isTelevision(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<AppLayout>()?.television ??
       false;
   static String versionOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<AppLayout>()?.version ??
-      appVersion;
+      appVersionFallback;
+  static String? apkAbiOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppLayout>()?.apkAbi;
 
   @override
   bool updateShouldNotify(AppLayout oldWidget) =>
-      television != oldWidget.television || version != oldWidget.version;
+      television != oldWidget.television ||
+      version != oldWidget.version ||
+      apkAbi != oldWidget.apkAbi;
 }

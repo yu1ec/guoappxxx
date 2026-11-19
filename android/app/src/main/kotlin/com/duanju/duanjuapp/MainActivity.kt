@@ -26,7 +26,9 @@ import android.view.InputDevice
 import android.view.WindowManager
 import android.provider.Settings
 import androidx.annotation.ChecksSdkIntAtLeast
+import androidx.core.content.FileProvider
 import io.flutter.embedding.engine.FlutterEngine
+import java.io.File
 import io.flutter.embedding.engine.FlutterShellArgs
 import io.flutter.plugin.common.MethodChannel
 
@@ -121,6 +123,30 @@ class MainActivity : FlutterActivity() {
         Runtime.getRuntime().exit(0)
     }
 
+    private fun installedApkAbi(): String {
+        val libDir = applicationInfo.nativeLibraryDir.orEmpty()
+        return when {
+            libDir.contains("arm64") -> "arm64-v8a"
+            libDir.contains("x86_64") -> "x86_64"
+            libDir.contains("x86") && !libDir.contains("x86_64") -> "x86"
+            libDir.contains("arm") -> "armeabi-v7a"
+            else -> "arm64-v8a"
+        }
+    }
+
+    private fun packageVersionLabel(): String {
+        @Suppress("DEPRECATION")
+        val pkg = packageManager.getPackageInfo(packageName, 0)
+        val name = pkg.versionName.orEmpty()
+        val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pkg.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            pkg.versionCode.toLong()
+        }
+        return if (name.isNotEmpty()) "$name+$code" else code.toString()
+    }
+
     override fun setRequestedOrientation(requestedOrientation: Int) {
         super.setRequestedOrientation(
             if (televisionMode) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else requestedOrientation
@@ -181,8 +207,69 @@ class MainActivity : FlutterActivity() {
                 channel.setMethodCallHandler { call, result ->
                     when (call.method) {
                         "deviceInfo" -> {
-                            val version = packageManager.getPackageInfo(packageName, 0).versionName
-                            result.success(mapOf("television" to isTelevisionDevice(), "version" to version))
+                            result.success(
+                                mapOf(
+                                    "television" to isTelevisionDevice(),
+                                    "version" to packageVersionLabel(),
+                                    "apkAbi" to installedApkAbi(),
+                                )
+                            )
+                        }
+                        "installApk" -> {
+                            val path = call.argument<String>("path")
+                            if (path.isNullOrBlank()) {
+                                result.error("invalid_path", "缺少 APK 路径", null)
+                            } else {
+                                val file = File(path)
+                                if (!file.isFile) {
+                                    result.error("missing_file", "安装包不存在", null)
+                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                                    !packageManager.canRequestPackageInstalls()
+                                ) {
+                                    runCatching {
+                                        startActivity(
+                                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                                                data = Uri.parse("package:$packageName")
+                                            }
+                                        )
+                                    }
+                                    result.error("need_permission", "请允许安装未知应用后重试", null)
+                                } else {
+                                    try {
+                                        val uri = FileProvider.getUriForFile(
+                                            this,
+                                            "$packageName.fileprovider",
+                                            file,
+                                        )
+                                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                                            setDataAndType(uri, "application/vnd.android.package-archive")
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        startActivity(intent)
+                                        result.success(null)
+                                    } catch (e: Exception) {
+                                        result.error("install_failed", e.message, null)
+                                    }
+                                }
+                            }
+                        }
+                        "openUrl" -> {
+                            val url = call.argument<String>("url")
+                            if (url.isNullOrBlank()) {
+                                result.error("invalid_url", "链接为空", null)
+                            } else {
+                                try {
+                                    startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                    )
+                                    result.success(null)
+                                } catch (e: Exception) {
+                                    result.error("open_failed", e.message, null)
+                                }
+                            }
                         }
                         "setTelevisionMode" -> {
                             val enabled = call.argument<Boolean>("enabled")

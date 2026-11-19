@@ -202,6 +202,7 @@ class _AppBootstrapState extends State<AppBootstrap>
     onRetry: _initialize,
     television: device.television,
     version: device.version,
+    apkAbi: device.apkAbi,
     navigatorKey: navigator,
   );
 }
@@ -214,7 +215,8 @@ class DuanjuApp extends StatelessWidget {
     this.bootstrapError,
     this.onRetry,
     this.television = false,
-    this.version = appVersion,
+    this.version = appVersionFallback,
+    this.apkAbi,
     this.navigatorKey,
   });
   final AppRepository repository;
@@ -223,6 +225,7 @@ class DuanjuApp extends StatelessWidget {
   final VoidCallback? onRetry;
   final bool television;
   final String version;
+  final String? apkAbi;
   final GlobalKey<NavigatorState>? navigatorKey;
 
   @override
@@ -259,6 +262,7 @@ class DuanjuApp extends StatelessWidget {
             child: AppLayout(
               television: tv,
               version: version,
+              apkAbi: apkAbi,
               child: Theme(
                 data: tv ? televisionTheme(theme) : theme,
                 child: Shortcuts(

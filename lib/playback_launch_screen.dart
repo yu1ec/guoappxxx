@@ -9,12 +9,18 @@ import 'models.dart';
 import 'player_screen.dart';
 import 'widgets.dart';
 
+var _openingPlaybackDirectly = false;
+
 Future<void> openPlaybackDirectly(
   BuildContext context, {
   required Drama drama,
   required AppRepository repository,
   required LocalStore store,
 }) async {
+  if (_openingPlaybackDirectly) {
+    return;
+  }
+  _openingPlaybackDirectly = true;
   final profileEpoch = store.profileEpoch;
   try {
     final detail = await repository.detail(drama);
@@ -82,6 +88,8 @@ Future<void> openPlaybackDirectly(
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  } finally {
+    _openingPlaybackDirectly = false;
   }
 }
 
