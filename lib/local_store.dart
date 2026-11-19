@@ -571,7 +571,7 @@ class LocalStore extends ChangeNotifier {
   Future<void> setSkippedUpdateVersion(String? value) => value == null
       ? _queue(() async {
           if (locked) return;
-          await _commit(remove: {'updateSkippedVersion'});
+          await _commit({}, remove: {'updateSkippedVersion'});
           _notify();
         })
       : _setting('updateSkippedVersion', value);
