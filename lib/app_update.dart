@@ -103,6 +103,13 @@ int compareAppVersions(String a, String b) {
 bool isUpdateAvailable(String current, String latest) =>
     compareAppVersions(current, latest) < 0;
 
+/// Flutter `--split-per-abi` 在 [versionCode] 上加 ABI 段（arm64 2xxx、v7 1xxx、x86_64 4xxx）。
+String normalizeAppVersionForCompare(String raw) {
+  final parsed = parseAppVersion(raw);
+  if (parsed.build < 1000) return raw.trim();
+  return '${parsed.major}.${parsed.minor}.${parsed.patch}+${parsed.build % 1000}';
+}
+
 List<String> candidateCheckUrls(bool accelerate) {
   final urls = <String>[_latestReleaseApi];
   if (accelerate) {
@@ -177,6 +184,7 @@ Future<AppUpdateCheck> checkForAppUpdate({
   required String apkAbi,
   required bool accelerate,
 }) async {
+  currentVersion = normalizeAppVersionForCompare(currentVersion);
   if (!Platform.isAndroid) {
     return AppUpdateCheck(
       currentVersion: currentVersion,

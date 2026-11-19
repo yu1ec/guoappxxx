@@ -8,6 +8,14 @@ void main() {
     expect(parseReleaseTag('0.2.0'), '0.2.0');
   });
 
+  test('normalizeAppVersionForCompare undoes split-per-abi versionCode', () {
+    expect(normalizeAppVersionForCompare('0.3.1+2090'), '0.3.1+90');
+    expect(normalizeAppVersionForCompare('0.3.1+1090'), '0.3.1+90');
+    expect(normalizeAppVersionForCompare('0.3.1+90'), '0.3.1+90');
+    expect(isUpdateAvailable('0.3.1+2090', '0.3.1+91'), isTrue);
+    expect(isUpdateAvailable('0.3.1+2090', '0.3.1+90'), isFalse);
+  });
+
   test('compareAppVersions semver then build', () {
     expect(compareAppVersions('0.3.0+10', '0.3.1+1'), lessThan(0));
     expect(compareAppVersions('0.3.1+89', '0.3.1+90'), lessThan(0));

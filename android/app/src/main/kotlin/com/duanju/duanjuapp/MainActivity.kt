@@ -144,7 +144,9 @@ class MainActivity : FlutterActivity() {
             @Suppress("DEPRECATION")
             pkg.versionCode.toLong()
         }
-        return if (name.isNotEmpty()) "$name+$code" else code.toString()
+        // Flutter split-per-abi 会给 versionCode 加 ABI 前缀（×1000），须还原 pubspec 构建号。
+        val build = if (code >= 1000) code % 1000 else code
+        return if (name.isNotEmpty()) "$name+$build" else build.toString()
     }
 
     override fun setRequestedOrientation(requestedOrientation: Int) {
