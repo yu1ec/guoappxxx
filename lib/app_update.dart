@@ -103,6 +103,15 @@ int compareAppVersions(String a, String b) {
 bool isUpdateAvailable(String current, String latest) =>
     compareAppVersions(current, latest) < 0;
 
+/// 远端 latest 与当前一致且 APK 资产可下载时，允许同版本覆盖重装。
+bool canRedownloadSameVersion(AppUpdateCheck check) {
+  if (check.error != null) return false;
+  final latest = check.latestVersion;
+  if (latest == null) return false;
+  if (check.downloadUrl == null || check.assetName == null) return false;
+  return compareAppVersions(check.currentVersion, latest) == 0;
+}
+
 /// Flutter `--split-per-abi` 在 [versionCode] 上加 ABI 段（arm64 2xxx、v7 1xxx、x86_64 4xxx）。
 String normalizeAppVersionForCompare(String raw) {
   final parsed = parseAppVersion(raw);

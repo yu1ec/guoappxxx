@@ -280,7 +280,13 @@ class _AppUpdatePanelState extends State<AppUpdatePanel> {
       _busy = false;
       _result = result;
       if (manual && !result.updateAvailable) {
-        _message = result.error ?? '当前已是最新版本';
+        if (result.error != null) {
+          _message = result.error;
+        } else if (canRedownloadSameVersion(result)) {
+          _message = '当前已是最新版本，可重新下载覆盖安装';
+        } else {
+          _message = '当前已是最新版本';
+        }
       }
     });
   }
@@ -370,6 +376,13 @@ class _AppUpdatePanelState extends State<AppUpdatePanel> {
                   FilledButton(
                     onPressed: _busy ? null : _install,
                     child: Text('更新到 ${_result!.latestVersion}'),
+                  ),
+                if (_result != null &&
+                    !_result!.updateAvailable &&
+                    canRedownloadSameVersion(_result!))
+                  OutlinedButton(
+                    onPressed: _busy ? null : _install,
+                    child: const Text('重新下载安装'),
                   ),
               ],
             ),
