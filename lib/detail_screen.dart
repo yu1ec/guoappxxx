@@ -18,6 +18,7 @@ import 'sources_screen.dart';
 import 'episode_browser.dart';
 import 'follow_state.dart';
 import 'hongguo_series.dart';
+import 'home_screen.dart';
 
 class DetailScreen extends StatefulWidget {
   const DetailScreen({
@@ -320,14 +321,26 @@ class _DetailScreenState extends State<DetailScreen> {
     final allowed =
         widget.store.profileEpoch == _profileEpoch &&
         widget.store.allowsSource(drama.source);
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.escape): () =>
-            Navigator.of(context).maybePop(),
-        const SingleActivator(LogicalKeyboardKey.goBack): () =>
-            Navigator.of(context).maybePop(),
+    final isFirst = ModalRoute.of(context)?.isFirst ?? false;
+    return PopScope(
+      canPop: !isFirst,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && isFirst) {
+          openHomeAsRoot(
+            context,
+            repository: widget.repository,
+            store: widget.store,
+          );
+        }
       },
-      child: Scaffold(
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.escape): () =>
+              Navigator.of(context).maybePop(),
+          const SingleActivator(LogicalKeyboardKey.goBack): () =>
+              Navigator.of(context).maybePop(),
+        },
+        child: Scaffold(
         appBar: AppBar(
           toolbarHeight: television ? 64 : null,
           title: Text(drama.title, overflow: TextOverflow.ellipsis),
@@ -526,6 +539,7 @@ class _DetailScreenState extends State<DetailScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

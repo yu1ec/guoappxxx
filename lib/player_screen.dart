@@ -20,6 +20,7 @@ import 'luna_exo_player.dart';
 import 'danmaku_controller.dart';
 import 'danmaku_overlay.dart';
 import 'detail_screen.dart';
+import 'home_screen.dart';
 import 'download_picker.dart';
 import 'downloads_screen.dart';
 import 'follow_state.dart';
@@ -1688,10 +1689,14 @@ class _PlayerScreenState extends State<PlayerScreen>
       // 遥控 / 物理「返回」/ 桌面「关闭」/ Esc：只要下方还有路由（如选集页）
       // 就强制 pop 回去。播放器全屏时 canPop=false，裸 maybePop 会落空，被系统
       // 当作「无下方页面」直接退 app。用 isFirst 判定 + 无条件 pop，确保只要
-      // 选集页在栈底就一定回到选集，只有播放页本身是首路由时才交还系统退出。
+      // 选集页在栈底就一定回到选集；播放页本身是首路由时回首页而不是退 app。
       final navigator = Navigator.of(context);
       if (ModalRoute.of(context)?.isFirst ?? false) {
-        navigator.maybePop();
+        openHomeAsRoot(
+          context,
+          repository: widget.repository,
+          store: widget.store,
+        );
       } else {
         navigator.pop();
       }

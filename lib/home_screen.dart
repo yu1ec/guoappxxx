@@ -36,6 +36,26 @@ import 'live_screen.dart';
 import 'live_store.dart';
 import 'update_banner.dart';
 
+/// 将导航栈收束到当前用户的首页，用于根路由上按返回时不直接退出应用。
+void openHomeAsRoot(
+  BuildContext context, {
+  required AppRepository repository,
+  required LocalStore store,
+}) {
+  final navigator = Navigator.of(context);
+  if (!navigator.mounted) return;
+  navigator.pushAndRemoveUntil<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => HomeScreen(
+        key: ValueKey('profile-${store.profile.id}-${store.profileEpoch}'),
+        repository: repository,
+        store: store,
+      ),
+    ),
+    (route) => false,
+  );
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.repository, required this.store});
   final AppRepository repository;
@@ -451,14 +471,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _televisionBack() {
+  bool get _homeIdle =>
+      !_selectionMode &&
+      _tab == 0 &&
+      !_showRecommendations &&
+      !_searchVisible &&
+      _search.text.isEmpty &&
+      _submittedQuery.isEmpty;
+
+  void _handleHomeBack() {
     if (_selectionMode) {
       _cancelSelection();
     } else if (_tab != 0) {
       setState(() => _tab = 0);
-    } else if (_search.text.isNotEmpty) {
-      _search.clear();
-      _searchChanged('');
+    } else if (_searchVisible ||
+        _search.text.isNotEmpty ||
+        _submittedQuery.isNotEmpty) {
+      final hadQuery =
+          _search.text.isNotEmpty || _submittedQuery.isNotEmpty;
+      setState(() {
+        _searchVisible = false;
+        _submittedQuery = '';
+        if (_search.text.isNotEmpty) _search.clear();
+      });
+      if (hadQuery) _searchChanged('');
+    } else if (_showRecommendations) {
+      _changeCategory('');
     }
   }
 
@@ -1258,13 +1296,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
         );
-        if (!television && !_selectionMode) return scaffold;
         return PopScope(
-          canPop:
-              !_selectionMode &&
-              (!television || _tab == 0 && _search.text.isEmpty),
+          canPop: _homeIdle,
           onPopInvokedWithResult: (didPop, result) {
-            if (!didPop) _televisionBack();
+            if (!didPop) _handleHomeBack();
           },
           child: CallbackShortcuts(
             bindings: {
