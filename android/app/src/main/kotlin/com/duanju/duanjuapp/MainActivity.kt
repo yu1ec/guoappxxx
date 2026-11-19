@@ -74,6 +74,94 @@ class MainActivity : FlutterActivity() {
     private var cast: DlnaCast? = null
     private var televisionMode = false
 
+    companion object {
+        private const val REQUEST_UNKNOWN_APP_SOURCES = 58291
+        private const val INSTALL_PREFS = "duanju_install"
+        private const val PENDING_APK = "pendingApk"
+    }
+
+    private fun needsInstallPermission(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+
+    private fun pendingInstallApkPath(): String? =
+        getSharedPreferences(INSTALL_PREFS, Context.MODE_PRIVATE)
+            .getString(PENDING_APK, null)
+
+    private fun setPendingInstallApkPath(path: String?) {
+        getSharedPreferences(INSTALL_PREFS, Context.MODE_PRIVATE).edit()
+            .apply {
+                if (path.isNullOrBlank()) remove(PENDING_APK)
+                else putString(PENDING_APK, path)
+            }
+            .commit()
+    }
+
+    private fun openUnknownAppSourceSettings() {
+        val packageIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        @Suppress("DEPRECATION")
+        runCatching {
+            startActivityForResult(packageIntent, REQUEST_UNKNOWN_APP_SOURCES)
+        }.recoverCatching {
+            @Suppress("DEPRECATION")
+            startActivityForResult(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES),
+                REQUEST_UNKNOWN_APP_SOURCES,
+            )
+        }.getOrThrow()
+    }
+
+    private fun launchApkInstaller(file: File) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        startActivity(
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        )
+    }
+
+    private fun schedulePendingApkInstall() {
+        window.decorView.postDelayed({ resumePendingApkInstall() }, 300)
+    }
+
+    private fun resumePendingApkInstall() {
+        if (isFinishing || isDestroyed) return
+        val path = pendingInstallApkPath() ?: return
+        if (needsInstallPermission()) return
+        val file = File(path)
+        if (!file.isFile) {
+            setPendingInstallApkPath(null)
+            return
+        }
+        setPendingInstallApkPath(null)
+        runCatching { launchApkInstaller(file) }
+    }
+
+    private fun installApk(file: File, result: MethodChannel.Result) {
+        if (!file.isFile) {
+            result.error("missing_file", "安装包不存在", null)
+            return
+        }
+        if (needsInstallPermission()) {
+            setPendingInstallApkPath(file.absolutePath)
+            val opened = runCatching { openUnknownAppSourceSettings() }.isSuccess
+            if (opened) result.success(null)
+            else result.error("need_permission", "请允许安装未知应用，返回后将自动继续安装", null)
+            return
+        }
+        try {
+            setPendingInstallApkPath(null)
+            launchApkInstaller(file)
+            result.success(null)
+        } catch (e: Exception) {
+            result.error("install_failed", e.message, null)
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun isTelevisionDevice(): Boolean {
         val configuration = resources.configuration
@@ -195,6 +283,14 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         if (televisionMode) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        if (pendingInstallApkPath() != null) schedulePendingApkInstall()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_UNKNOWN_APP_SOURCES) schedulePendingApkInstall()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -222,38 +318,7 @@ class MainActivity : FlutterActivity() {
                             if (path.isNullOrBlank()) {
                                 result.error("invalid_path", "缺少 APK 路径", null)
                             } else {
-                                val file = File(path)
-                                if (!file.isFile) {
-                                    result.error("missing_file", "安装包不存在", null)
-                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                                    !packageManager.canRequestPackageInstalls()
-                                ) {
-                                    runCatching {
-                                        startActivity(
-                                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                                                data = Uri.parse("package:$packageName")
-                                            }
-                                        )
-                                    }
-                                    result.error("need_permission", "请允许安装未知应用后重试", null)
-                                } else {
-                                    try {
-                                        val uri = FileProvider.getUriForFile(
-                                            this,
-                                            "$packageName.fileprovider",
-                                            file,
-                                        )
-                                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            setDataAndType(uri, "application/vnd.android.package-archive")
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        startActivity(intent)
-                                        result.success(null)
-                                    } catch (e: Exception) {
-                                        result.error("install_failed", e.message, null)
-                                    }
-                                }
+                                installApk(File(path), result)
                             }
                         }
                         "openUrl" -> {
