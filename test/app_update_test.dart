@@ -1,4 +1,6 @@
 import 'package:duanju_app/app_update.dart';
+import 'package:duanju_app/update_banner.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -78,6 +80,40 @@ void main() {
     expect(urls.last, github);
   });
 
+  test('assetSizeOf reads GitHub asset size', () {
+    final assets = [
+      {'name': 'foo.apk', 'size': 12345678},
+      {'name': 'bar.apk', 'size': 0},
+    ];
+    expect(assetSizeOf(assets, 'foo.apk'), 12345678);
+    expect(assetSizeOf(assets, 'bar.apk'), isNull);
+    expect(assetSizeOf(assets, 'missing.apk'), isNull);
+  });
+
+  test('appUpdateProgressValue is determinate only with total', () {
+    expect(appUpdateProgressValue(0, 100), 0);
+    expect(appUpdateProgressValue(40, 100), 0.4);
+    expect(appUpdateProgressValue(10, null), isNull);
+    expect(appUpdateProgressValue(10, 0), isNull);
+  });
+
+  test('appUpdateProgressLabel shows download and install states', () {
+    expect(
+      appUpdateProgressLabel(downloaded: 0, total: 20 * 1024 * 1024),
+      '正在连接下载…',
+    );
+    expect(
+      appUpdateProgressLabel(downloaded: 10 * 1024 * 1024, total: 20 * 1024 * 1024),
+      '正在下载 50%（10.0 MB / 20.0 MB）',
+    );
+    expect(appUpdateProgressLabel(downloaded: 1024), '正在下载 1.0 KB');
+    expect(appUpdateProgressLabel(downloaded: 0), '正在连接下载…');
+    expect(
+      appUpdateProgressLabel(downloaded: 10, total: 20, installing: true),
+      '正在安装…',
+    );
+  });
+
   test('matchApkAssetName picks slug and abi', () {
     final assets = [
       {'name': 'quanjushijie-0.3.1+90-arm64-v8a.apk'},
@@ -97,6 +133,43 @@ void main() {
         slug: 'quanjushijie',
         abi: 'x86_64',
       ),
+      isNull,
+    );
+  });
+
+  testWidgets('AppUpdateProgressBar shows determinate download progress', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppUpdateProgressBar(
+            downloaded: 10 * 1024 * 1024,
+            total: 20 * 1024 * 1024,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('正在下载 50%（10.0 MB / 20.0 MB）'), findsOneWidget);
+    expect(
+      tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value,
+      0.5,
+    );
+  });
+
+  testWidgets('AppUpdateProgressBar is indeterminate without total size', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppUpdateProgressBar(downloaded: 1024),
+        ),
+      ),
+    );
+    expect(find.text('正在下载 1.0 KB'), findsOneWidget);
+    expect(
+      tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value,
       isNull,
     );
   });

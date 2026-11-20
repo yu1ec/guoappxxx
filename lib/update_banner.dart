@@ -27,34 +27,79 @@ class UpdateBanner extends StatefulWidget {
   State<UpdateBanner> createState() => _UpdateBannerState();
 }
 
+class AppUpdateProgressBar extends StatelessWidget {
+  const AppUpdateProgressBar({
+    super.key,
+    required this.downloaded,
+    this.total,
+    this.installing = false,
+  });
+
+  final int downloaded;
+  final int? total;
+  final bool installing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LinearProgressIndicator(
+          value: installing ? null : appUpdateProgressValue(downloaded, total),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          appUpdateProgressLabel(
+            downloaded: downloaded,
+            total: total,
+            installing: installing,
+          ),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
 class _UpdateBannerState extends State<UpdateBanner> {
-  bool _busy = false;
-  double? _progress;
+  bool _downloading = false;
+  bool _installing = false;
+  int _downloaded = 0;
+  int? _total;
   String? _message;
+
+  bool get _busy => _downloading || _installing;
 
   Future<void> _install() async {
     final url = widget.check.downloadUrl;
     final name = widget.check.assetName;
     if (url == null || name == null) return;
     setState(() {
-      _busy = true;
+      _downloading = true;
+      _installing = false;
+      _downloaded = 0;
+      _total = widget.check.assetSize;
       _message = null;
-      _progress = 0;
     });
     try {
       final path = await downloadAppUpdate(
         downloadUrl: url,
         assetName: name,
         accelerate: widget.store.accelerateDownload,
+        expectedSize: widget.check.assetSize,
         onProgress: (downloaded, total) {
           if (!mounted) return;
           setState(() {
-            if (total != null && total > 0) {
-              _progress = downloaded / total;
-            }
+            _downloaded = downloaded;
+            _total = total ?? widget.check.assetSize;
           });
         },
       );
+      if (!mounted) return;
+      setState(() {
+        _downloading = false;
+        _installing = true;
+      });
       await installDownloadedApk(path);
     } on PlatformException catch (error) {
       if (!mounted) return;
@@ -63,7 +108,12 @@ class _UpdateBannerState extends State<UpdateBanner> {
       if (!mounted) return;
       setState(() => _message = error.toString());
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _downloading = false;
+          _installing = false;
+        });
+      }
     }
   }
 
@@ -83,9 +133,13 @@ class _UpdateBannerState extends State<UpdateBanner> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('发现新版本 ${latest ?? ''}（当前 ${widget.check.currentVersion}）'),
-          if (_busy && _progress != null) ...[
+          if (_busy) ...[
             const SizedBox(height: 8),
-            LinearProgressIndicator(value: _progress),
+            AppUpdateProgressBar(
+              downloaded: _downloaded,
+              total: _total,
+              installing: _installing,
+            ),
           ],
           if (_message != null) ...[
             const SizedBox(height: 8),
@@ -106,7 +160,7 @@ class _UpdateBannerState extends State<UpdateBanner> {
           TextButton(onPressed: _openRelease, child: const Text('手动下载')),
         FilledButton(
           onPressed: _busy ? null : _install,
-          child: const Text('立即更新'),
+          child: Text(_installing ? '安装中…' : _downloading ? '下载中…' : '立即更新'),
         ),
       ],
     );
@@ -247,9 +301,14 @@ class AppUpdatePanel extends StatefulWidget {
 
 class _AppUpdatePanelState extends State<AppUpdatePanel> {
   AppUpdateCheck? _result;
-  bool _busy = false;
+  bool _checking = false;
+  bool _downloading = false;
+  bool _installing = false;
+  int _downloaded = 0;
+  int? _total;
   String? _message;
-  double? _progress;
+
+  bool get _busy => _checking || _downloading || _installing;
 
   String _version(BuildContext context) =>
       widget.currentVersion ?? AppLayout.versionOf(context);
@@ -267,7 +326,7 @@ class _AppUpdatePanelState extends State<AppUpdatePanel> {
       return;
     }
     setState(() {
-      _busy = true;
+      _checking = true;
       _message = null;
     });
     final result = await checkForAppUpdate(
@@ -277,7 +336,7 @@ class _AppUpdatePanelState extends State<AppUpdatePanel> {
     );
     if (!mounted) return;
     setState(() {
-      _busy = false;
+      _checking = false;
       _result = result;
       if (manual && !result.updateAvailable) {
         if (result.error != null) {
@@ -293,29 +352,45 @@ class _AppUpdatePanelState extends State<AppUpdatePanel> {
 
   Future<void> _install() async {
     final check = _result;
-    if (check?.downloadUrl == null || check?.assetName == null) return;
+    final url = check?.downloadUrl;
+    final name = check?.assetName;
+    if (check == null || url == null || name == null) return;
     setState(() {
-      _busy = true;
-      _progress = 0;
+      _downloading = true;
+      _installing = false;
+      _downloaded = 0;
+      _total = check.assetSize;
       _message = null;
     });
     try {
       final path = await downloadAppUpdate(
-        downloadUrl: check!.downloadUrl!,
-        assetName: check.assetName!,
+        downloadUrl: url,
+        assetName: name,
         accelerate: widget.store.accelerateDownload,
+        expectedSize: check.assetSize,
         onProgress: (downloaded, total) {
           if (!mounted) return;
           setState(() {
-            if (total != null && total > 0) _progress = downloaded / total;
+            _downloaded = downloaded;
+            _total = total ?? check.assetSize;
           });
         },
       );
+      if (!mounted) return;
+      setState(() {
+        _downloading = false;
+        _installing = true;
+      });
       await installDownloadedApk(path);
     } catch (error) {
       if (mounted) setState(() => _message = error.toString());
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _downloading = false;
+          _installing = false;
+        });
+      }
     }
   }
 
@@ -353,10 +428,29 @@ class _AppUpdatePanelState extends State<AppUpdatePanel> {
               '优先尝试 ghfast.top / gh-proxy.com 等镜像，失败后自动回退 GitHub',
             ),
           ),
-          if (_busy && _progress != null)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: LinearProgressIndicator(),
+          if (_checking)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 6),
+                  Text(
+                    '正在检查更新…',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          if (_downloading || _installing)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: AppUpdateProgressBar(
+                downloaded: _downloaded,
+                total: _total,
+                installing: _installing,
+              ),
             ),
           if (_message != null)
             Padding(
@@ -375,14 +469,26 @@ class _AppUpdatePanelState extends State<AppUpdatePanel> {
                 if (_result?.updateAvailable == true)
                   FilledButton(
                     onPressed: _busy ? null : _install,
-                    child: Text('更新到 ${_result!.latestVersion}'),
+                    child: Text(
+                      _installing
+                          ? '安装中…'
+                          : _downloading
+                              ? '下载中…'
+                              : '更新到 ${_result!.latestVersion}',
+                    ),
                   ),
                 if (_result != null &&
                     !_result!.updateAvailable &&
                     canRedownloadSameVersion(_result!))
                   OutlinedButton(
                     onPressed: _busy ? null : _install,
-                    child: const Text('重新下载安装'),
+                    child: Text(
+                      _installing
+                          ? '安装中…'
+                          : _downloading
+                              ? '下载中…'
+                              : '重新下载安装',
+                    ),
                   ),
               ],
             ),

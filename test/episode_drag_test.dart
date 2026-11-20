@@ -43,6 +43,29 @@ void main() {
     expect(blockedPrev, lessThan(0));
   });
 
+  test('episodeSwipePreviewIndex stays on the swipe target after play advances', () {
+    expect(
+      episodeSwipePreviewIndex(currentIndex: 4, direction: 1),
+      5,
+    );
+    expect(
+      episodeSwipePreviewIndex(
+        currentIndex: 5,
+        direction: 1,
+        pinnedIndex: 5,
+      ),
+      5,
+    );
+    expect(
+      episodeSwipePreviewIndex(
+        currentIndex: 3,
+        direction: -1,
+        pinnedIndex: 3,
+      ),
+      3,
+    );
+  });
+
   test('episodeSwipeDirection respects threshold', () {
     expect(
       episodeSwipeDirection(deltaY: 50, threshold: 60),

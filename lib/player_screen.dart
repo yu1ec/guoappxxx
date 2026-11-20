@@ -135,6 +135,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   String? _saveWarning;
   double _episodeDragProgress = 0;
   bool _episodeTransitioning = false;
+  int? _episodePreviewIndex;
   late final AnimationController _episodeSlideController;
   PlaybackPlan? _plan;
   double _speed = 1;
@@ -1360,9 +1361,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
     animation.addListener(listener);
     _episodeSlideController.value = 0;
-    await _episodeSlideController.forward(from: 0);
-    animation.removeListener(listener);
-    _episodeSlideController.value = 0;
+    try {
+      await _episodeSlideController.forward(from: 0);
+    } on TickerCanceled {
+      // 开播就绪后会停掉剩余滑动，直接露出新画面。
+    } finally {
+      animation.removeListener(listener);
+      _episodeSlideController.value = 0;
+    }
   }
 
   Future<void> _cancelEpisodeDrag() async {
@@ -1383,63 +1389,43 @@ class _PlayerScreenState extends State<PlayerScreen>
       return;
     }
     _episodeTransitioning = true;
+    final next = _index + direction;
+    _episodePreviewIndex = next;
     final from = _episodeDragProgress;
     final target = direction > 0 ? 1.0 : -1.0;
-    await _animateEpisodeProgress(
-      begin: from,
-      end: target,
-      durationMs: (220 + (1 - from.abs()) * 160).round(),
-    );
-    if (!mounted || _closed) {
-      _episodeTransitioning = false;
-      return;
-    }
-    final next = _index + direction;
     _interactions.hint(
       '第 ${widget.detail.episodes[next].number} 集',
       revealControls: false,
     );
-    await _play(next, showControlsOnReady: false);
-    if (mounted && !_closed) {
-      if (_episodeDragProgress != 0) {
-        await _animateEpisodeProgress(
-          begin: _episodeDragProgress,
-          end: 0,
-          durationMs: 200,
+    try {
+      final remaining = (from - target).abs();
+      if (remaining > 0.02) {
+        unawaited(
+          _animateEpisodeProgress(
+            begin: from,
+            end: target,
+            durationMs: (220 + remaining * 160).round(),
+          ),
         );
       }
+      await _play(next, showControlsOnReady: false);
+    } finally {
+      if (!mounted || _closed) {
+        _episodeTransitioning = false;
+        _episodePreviewIndex = null;
+        return;
+      }
+      _episodeSlideController.stop();
       setState(() {
         _episodeTransitioning = false;
         _episodeDragProgress = 0;
+        _episodePreviewIndex = null;
       });
     }
   }
 
   Future<void> _autoAdvanceToNextEpisode() async {
-    if (_episodeTransitioning || !_canEpisodeSwipe(1)) {
-      await _play(_index + 1, showControlsOnReady: false);
-      return;
-    }
-    _episodeTransitioning = true;
-    await _animateEpisodeProgress(begin: 0, end: 1);
-    if (!mounted || _closed) {
-      _episodeTransitioning = false;
-      return;
-    }
     await _play(_index + 1, showControlsOnReady: false);
-    if (mounted && !_closed) {
-      if (_episodeDragProgress != 0) {
-        await _animateEpisodeProgress(
-          begin: _episodeDragProgress,
-          end: 0,
-          durationMs: 200,
-        );
-      }
-      setState(() {
-        _episodeTransitioning = false;
-        _episodeDragProgress = 0;
-      });
-    }
   }
 
   Future<void> _rotate() async {
@@ -2042,61 +2028,26 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Widget _episodeSwipePreview(int direction) {
-    final index = _index + direction;
+    final index = episodeSwipePreviewIndex(
+      currentIndex: _index,
+      direction: direction,
+      pinnedIndex: _episodePreviewIndex,
+    );
     if (index < 0 || index >= widget.detail.episodes.length) {
       return const ColoredBox(color: Colors.black);
     }
     final episode = widget.detail.episodes[index];
     return ColoredBox(
       color: Colors.black,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          DramaCover(
-            drama: widget.detail.drama,
-            repository: widget.repository,
-            radius: 0,
+      child: Center(
+        child: Text(
+          '第 ${episode.number} 集',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: .88),
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: .25),
-                  Colors.black.withValues(alpha: .65),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.detail.drama.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '第 ${episode.number} 集',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: .88),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

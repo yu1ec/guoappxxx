@@ -37,6 +37,14 @@ int? episodeSwipeDirection({
   return deltaY > 0 ? 1 : -1;
 }
 
+/// 切集预览钉在松手时的目标集，避免 `_play` 改当前集后露出再下一集。
+int episodeSwipePreviewIndex({
+  required int currentIndex,
+  required int direction,
+  int? pinnedIndex,
+}) =>
+    pinnedIndex ?? currentIndex + direction;
+
 /// 播完判定：接近片尾即视为正常结束，避免误进 early_completion。
 bool playbackReachedNaturalEnd({
   required Duration position,

@@ -34,6 +34,7 @@ class AppUpdateCheck {
     this.latestVersion,
     this.assetName,
     this.downloadUrl,
+    this.assetSize,
     this.error,
   });
 
@@ -43,6 +44,7 @@ class AppUpdateCheck {
   final String releaseUrl;
   final String? assetName;
   final String? downloadUrl;
+  final int? assetSize;
   final String? error;
 }
 
@@ -161,6 +163,48 @@ String? assetDownloadUrl(
   return null;
 }
 
+int? assetSizeOf(
+  Iterable<Map<String, dynamic>> assets,
+  String assetName,
+) {
+  for (final asset in assets) {
+    if (asset['name'] != assetName) continue;
+    final size = asset['size'];
+    if (size is int && size > 0) return size;
+    if (size is num && size > 0) return size.round();
+  }
+  return null;
+}
+
+String formatByteSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+}
+
+/// 有总大小时返回 0–1，否则返回 null（交给进度条做不确定动画）。
+double? appUpdateProgressValue(int downloaded, int? total) {
+  if (total == null || total <= 0) return null;
+  return (downloaded / total).clamp(0.0, 1.0);
+}
+
+String appUpdateProgressLabel({
+  required int downloaded,
+  int? total,
+  bool installing = false,
+}) {
+  if (installing) return '正在安装…';
+  if (downloaded <= 0) return '正在连接下载…';
+  if (total != null && total > 0) {
+    final percent = ((downloaded / total) * 100).clamp(0, 100).floor();
+    return '正在下载 $percent%（${formatByteSize(downloaded)} / ${formatByteSize(total)}）';
+  }
+  return '正在下载 ${formatByteSize(downloaded)}';
+}
+
 Future<Map<String, dynamic>> _fetchJson(List<String> urls) async {
   final client = HttpClient()..userAgent = updateUserAgent;
   Object? lastError;
@@ -221,6 +265,8 @@ Future<AppUpdateCheck> checkForAppUpdate({
     );
     final downloadUrl =
         assetName == null ? null : assetDownloadUrl(assets, assetName);
+    final assetSize =
+        assetName == null ? null : assetSizeOf(assets, assetName);
     final newer = isUpdateAvailable(currentVersion, latest);
     final canInstall = assetName != null && downloadUrl != null;
     return AppUpdateCheck(
@@ -230,6 +276,7 @@ Future<AppUpdateCheck> checkForAppUpdate({
       releaseUrl: releaseUrl,
       assetName: assetName,
       downloadUrl: downloadUrl,
+      assetSize: assetSize,
     );
   } catch (error) {
     return AppUpdateCheck(
@@ -248,6 +295,7 @@ Future<String> downloadAppUpdate({
   required String downloadUrl,
   required String assetName,
   required bool accelerate,
+  int? expectedSize,
   UpdateDownloadProgress? onProgress,
 }) async {
   final client = HttpClient()..userAgent = updateUserAgent;
@@ -266,7 +314,10 @@ Future<String> downloadAppUpdate({
         if (target.existsSync()) await target.delete();
         final sink = target.openWrite();
         var downloaded = 0;
-        final total = response.contentLength >= 0 ? response.contentLength : null;
+        final headerTotal =
+            response.contentLength >= 0 ? response.contentLength : null;
+        final total = headerTotal ?? expectedSize;
+        onProgress?.call(0, total);
         await for (final chunk in response.timeout(downloadTimeout)) {
           sink.add(chunk);
           downloaded += chunk.length;
