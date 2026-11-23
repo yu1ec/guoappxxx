@@ -444,6 +444,7 @@ class RemoteEpisodeButton extends StatelessWidget {
     required this.onPressed,
     this.vip = false,
     this.current = false,
+    this.downloaded = false,
     this.compact = false,
     this.focusNode,
     this.onFocus,
@@ -451,6 +452,7 @@ class RemoteEpisodeButton extends StatelessWidget {
   final int number;
   final bool vip;
   final bool current;
+  final bool downloaded;
   final bool compact;
   final VoidCallback onPressed;
   final FocusNode? focusNode;
@@ -466,30 +468,45 @@ class RemoteEpisodeButton extends StatelessWidget {
     borderWidth: compact ? 1.2 : 2,
     outlined: true,
     onPressed: onPressed,
-    label: '第 $number 集${vip ? '，VIP 试看' : ''}',
+    label: '第 $number 集${vip ? '，VIP 试看' : ''}${downloaded ? '，已下载' : ''}',
     child: Center(
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Flexible(
-            child: Text(
-              '$number',
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  '$number',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compact ? 14 : 20,
+                    fontWeight: current ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (vip) ...[
+                SizedBox(width: compact ? 2 : 4),
+                Icon(
+                  Icons.workspace_premium_rounded,
+                  color: Theme.of(context).colorScheme.tertiary,
+                  size: compact ? 15 : 18,
+                ),
+              ],
+            ],
+          ),
+          if (downloaded)
+            Text(
+              '已下载',
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: compact ? 14 : 20,
-                fontWeight: current ? FontWeight.w700 : FontWeight.w500,
+                fontSize: compact ? 9 : 10,
+                height: 1,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
-          ),
-          if (vip) ...[
-            SizedBox(width: compact ? 2 : 4),
-            Icon(
-              Icons.workspace_premium_rounded,
-              color: Theme.of(context).colorScheme.tertiary,
-              size: compact ? 15 : 18,
-            ),
-          ],
         ],
       ),
     ),

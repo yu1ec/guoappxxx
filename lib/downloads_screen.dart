@@ -41,7 +41,7 @@ void showDownloadEnqueueNotice(
       duration: const Duration(seconds: 4),
       persist: false,
       content: Text(
-        added == 0 ? '所选集数已在下载列表中' : '已加入 $added 集，已有任务自动跳过',
+        added == 0 ? '所选集数已下载或已在下载列表中' : '已加入 $added 集，已下载和已有任务自动跳过',
       ),
       action: SnackBarAction(
         label: '查看',
@@ -543,7 +543,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             PopupMenuItem(
               value: 'update',
               enabled: !_updater.busy,
-              child: const Text('更新本剧 · 补充新增与缺失'),
+              child: const Text('更新本剧 · 补充新增与失败'),
             ),
             const PopupMenuItem(value: 'select', child: Text('选择本合集')),
             const PopupMenuItem(value: 'pause', child: Text('暂停本合集')),

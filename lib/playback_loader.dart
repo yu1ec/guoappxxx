@@ -29,7 +29,10 @@ class PlaybackLoader {
     if (localOnly) {
       final plan = await repository.localPlayback(drama, episode);
       if (plan == null || !plan.local) {
-        throw AppFailure('本地视频不可用，请重新下载或选择在线播放。', code: 'local_media');
+        throw AppFailure(
+          '本地视频不可用，请在已下载中删除该集后重新下载，或选择在线播放。',
+          code: 'local_media',
+        );
       }
       return plan;
     }

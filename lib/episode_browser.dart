@@ -158,6 +158,7 @@ class EpisodeBrowser extends StatefulWidget {
     required this.onSelected,
     this.currentNumber,
     this.selectedNumbers,
+    this.downloadedNumbers = const {},
     this.keyPrefix = 'episode',
     this.title = '选集',
     this.note = '',
@@ -167,6 +168,7 @@ class EpisodeBrowser extends StatefulWidget {
   final ValueChanged<int> onSelected;
   final int? currentNumber;
   final Set<int>? selectedNumbers;
+  final Set<int> downloadedNumbers;
   final String keyPrefix;
   final String title;
   final String note;
@@ -258,8 +260,12 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
                       .clamp(widget.compact ? 4 : 1, 12);
               final extent = max(
                 widget.compact ? 46.0 : 56.0,
-                scale.scale(widget.compact ? 18 : 20) +
-                    (widget.compact ? 24 : 30),
+                widget.downloadedNumbers.isEmpty
+                    ? scale.scale(widget.compact ? 18 : 20) +
+                          (widget.compact ? 24 : 30)
+                    : scale.scale(widget.compact ? 14 : 20) * 1.5 +
+                          scale.scale(10) +
+                          16,
               );
               final target = max(
                 0,
@@ -305,6 +311,9 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
                     key: ValueKey('${widget.keyPrefix}-${episode.number}'),
                     number: episode.number,
                     vip: episode.vip,
+                    downloaded: widget.downloadedNumbers.contains(
+                      episode.number,
+                    ),
                     compact: widget.compact,
                     current:
                         widget.selectedNumbers?.contains(episode.number) ??
@@ -374,12 +383,17 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
         1,
         (value, episode) => max(value, episode.number.toString().length),
       );
-      final minimum = max(40.0, scale.scale(14) * digits * .62 + 22);
+      final minimum = max(
+        max(40.0, scale.scale(14) * digits * .62 + 22),
+        widget.downloadedNumbers.isEmpty ? 0.0 : scale.scale(9) * 3 + 14,
+      );
       final columns = ((constraints.maxWidth - 12) / minimum).floor().clamp(
         5,
         television ? 12 : 10,
       );
-      final extent = max(34.0, scale.scale(14) + 18);
+      final extent = widget.downloadedNumbers.isEmpty
+          ? max(34.0, scale.scale(14) + 18)
+          : max(46.0, scale.scale(14) * 1.5 + scale.scale(9) + 12);
       final target = max(
         0,
         widget.episodes.indexWhere(
@@ -423,6 +437,7 @@ class _EpisodeBrowserState extends State<EpisodeBrowser> {
                   key: ValueKey('${widget.keyPrefix}-${episode.number}'),
                   number: episode.number,
                   vip: episode.vip,
+                  downloaded: widget.downloadedNumbers.contains(episode.number),
                   compact: true,
                   current:
                       widget.selectedNumbers?.contains(episode.number) ??

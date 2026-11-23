@@ -16,24 +16,28 @@ on:
         type: boolean
         default: false
       with_desktop_engines:
-        description: '编译 Windows / Linux 版番茄引擎（默认开：本地服务版 zip 要用；不关心 web 包里的番茄源可关掉省两台 runner）'
+        description: '编译 Windows / Linux 版番茄引擎（默认关；需要本地服务版番茄源时再勾，会使用 Windows runner）'
         type: boolean
-        default: true
+        default: false
       full_variants:
         description: 'iOS / macOS 出两个版本（短剧视界 + 全剧视界）；不勾只出全剧视界，省一半 macOS 计费分钟'
         type: boolean
         default: false
       republish:
-        description: '重复发布：同一版本已有 Release / tag 时覆盖重发（取消勾选则报错停止）'
+        description: '重复发布：同一版本已有 Release / tag 时覆盖重发（默认关；保持关闭以保护已有发布）'
         type: boolean
-        default: true
+        default: false
+      notify_telegram:
+        description: '向已配置的 Telegram 频道发送发布通知（默认关；仅明确需要通知时勾选）'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 # 同一个分支只留一个运行：手动重跑时会排在旧运行后面变成 pending（旧运行若正卡在等
-# macOS runner，新运行连 job 都不会出现，看上去就像「不分配 runner」）。取消旧运行是安全的：
-# 发布用的 prepare 会检查同名 Release/tag，republish 默认勾选即覆盖重发。
+# macOS runner，新运行连 job 都不会出现，看上去就像「不分配 runner」）。
+# 同名 Release/tag 默认拒绝发布，只有明确勾选 republish 才允许覆盖。
 concurrency:
   group: app-build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -99,15 +103,15 @@ jobs:
           set -euo pipefail
           # 番茄引擎的构建矩阵按「谁真正要用」来算，而不是跟着包名走：
           #   * windows / linux 版由 web job（本地服务版，每次必跑）消费，也顺带
-          #     给 windows 包用，所以默认常驻；勾掉 with_desktop_engines 可整体
-          #     跳过——代价只是 web 包里对应平台没有番茄引擎（番茄源降级提示，
+          #     给 windows 包用；默认关闭 with_desktop_engines，需要时勾选才构建。
+          #     跳过的代价只是 web 包里对应平台没有番茄引擎（番茄源降级提示，
           #     其余站源不受影响）；
           #   * macOS 那一格只在真出 macOS 包时才加。macOS runner 按 10 倍分钟
           #     计费，没勾 with_macos 却先白烧一台苹果机器编引擎（而产物根本没人用）
           #     最不划算；
           #   * 三项全关时矩阵为空，engines job 整体跳过（见该 job 的 if）。
           entries=''
-          if [ "${INPUT_WITH_DESKTOP_ENGINES:-true}" = "true" ]; then
+          if [ "${INPUT_WITH_DESKTOP_ENGINES:-false}" = "true" ]; then
             entries='{"runner":"windows-latest","platform":"windows","arguments":""}'
             entries="$entries"',{"runner":"ubuntu-latest","platform":"linux","arguments":""}'
           fi
@@ -652,6 +656,7 @@ jobs:
           TAG: ${{ needs.prepare.outputs.tag }}
           EXISTS_TAG: ${{ needs.prepare.outputs.exists_tag }}
           EXISTS_RELEASE: ${{ needs.prepare.outputs.exists_release }}
+          INPUT_REPUBLISH: ${{ inputs.republish }}
           ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: |
           set -euo pipefail
@@ -729,14 +734,21 @@ jobs:
           if [ "$EXISTS_RELEASE" = "1" ] || [ "$EXISTS_TAG" = "1" ]; then
             printf '\n本次为重复发布：已用同名包覆盖此前的 %s 旧资产。\n' "$TAG" >> notes.md
           fi
+          # 发布前再次检查：构建期间也可能有人发布了同一版本。
+          if [ "$INPUT_REPUBLISH" != "true" ]; then
+            if [ "$EXISTS_RELEASE" = "1" ] || [ "$EXISTS_TAG" = "1" ] || gh release view "$TAG" >/dev/null 2>&1; then
+              echo "::error::版本 $TAG 已存在，未授权覆盖，请提升版本号后重新构建。"
+              exit 1
+            fi
+          fi
           # 重复发布：先把同名 Release 和 tag 清掉，再按当前提交重建，否则 gh release
           # create 会因为 tag 已存在而失败。顺序很重要——先删 Release（它靠 tag 定位），
           # 再删 tag ref；任何一步失败都退到下面的「更新现有 Release」兜底。
-          if [ "$EXISTS_RELEASE" = "1" ]; then
+          if [ "$INPUT_REPUBLISH" = "true" ] && [ "$EXISTS_RELEASE" = "1" ]; then
             echo "删除已存在的 Release $TAG …"
             gh release delete "$TAG" --yes --cleanup-tag || true
           fi
-          if [ "$EXISTS_TAG" = "1" ]; then
+          if [ "$INPUT_REPUBLISH" = "true" ] && [ "$EXISTS_TAG" = "1" ]; then
             echo "删除已存在的远端 tag $TAG …"
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" >/dev/null 2>&1 || true
           fi
@@ -752,9 +764,23 @@ jobs:
             echo "::error::点 Re-run 重跑不生效——重跑会沿用原运行当时的令牌权限。"
             exit 1
           }
-          if gh release create "$TAG" release/* --target "$GITHUB_SHA" \
+          verify_tag=()
+          if [ "$INPUT_REPUBLISH" != "true" ]; then
+            # 原子创建新 tag：若同名 tag 在检查之后出现，API 拒绝而不是沿用或覆盖。
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA" >/dev/null || {
+              echo "::error::无法创建新 tag $TAG（可能发生版本冲突），停止发布，不覆盖已有 tag。"
+              exit 1
+            }
+            verify_tag=(--verify-tag)
+          fi
+          if gh release create "$TAG" release/* "${verify_tag[@]}" --target "$GITHUB_SHA" \
                 --title "短剧视界 / 全剧视界 ${VERSION}" --notes-file notes.md; then
             exit 0
+          fi
+          if [ "$INPUT_REPUBLISH" != "true" ]; then
+            echo "::error::创建新 Release 失败；未授权覆盖，保留现有内容并停止，不覆盖资产。"
+            exit 1
           fi
           # tag 没删干净（比如令牌没有删 ref 的权限）时落到这条兜底：
           # 沿用已有 Release，覆盖同名资产并更新说明。
@@ -767,6 +793,7 @@ jobs:
           fi
           publishing_failed
       - name: 推送到 Telegram 频道
+        if: ${{ inputs.notify_telegram }}
         continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

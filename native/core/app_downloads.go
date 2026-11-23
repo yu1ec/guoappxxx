@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-var errNativeLocalFile = errors.New("本地文件缺失或不完整，请重新下载或选择在线播放")
+var errNativeLocalFile = errors.New("本地文件缺失或不完整，请在已下载中删除该集后重新下载，或选择在线播放")
 
 type nativeDownloadEpisode struct {
 	Chapter Chapter `json:"chapter"`
@@ -143,6 +143,12 @@ func (manager *nativeDownloads) load() error {
 	}
 	for _, record := range records {
 		record.Drama = migrateNativeDrama(record.Drama)
+		// Older builds demoted a completed receipt when its local file was
+		// missing. Recover that known legacy case, not ordinary failed work.
+		if record.State == "failed" && record.File != "" && record.Error == "本地文件缺失，请重新下载" {
+			record.State = "completed"
+			record.Error = "本地文件缺失，请在已下载中删除该集后重新下载"
+		}
 		if !nativeDownloadAvailable(record.nativeDownloadJob) {
 			manager.jobs[record.ID] = record
 			continue
@@ -308,7 +314,10 @@ func (manager *nativeDownloads) enqueueContext(ctx context.Context, input native
 				}
 				existing.Drama = mergeNativeDrama(existing.Drama, input.Drama)
 			}
-			if input.Force && (existing.State == "failed" || existing.State == "completed" && !manager.localFilesValid(*existing)) {
+			// Completed records (including archived or missing files) remain the
+			// download receipt until explicitly removed in Downloads. Collection
+			// updates may retry failures, but must never re-download a completion.
+			if input.Force && existing.State == "failed" {
 				if existing.Archived {
 					if tasks >= 5000 {
 						rollback()
@@ -534,7 +543,10 @@ func (manager *nativeDownloads) run(ctx context.Context, job nativeDownloadJob) 
 		}
 	}
 	if saveErr := manager.saveLocked(); saveErr != nil && manager.jobs[job.ID] != nil {
-		record.State, record.Error = "failed", saveErr.Error()
+		record.Error = saveErr.Error()
+		if record.State != "completed" {
+			record.State = "failed"
+		}
 	}
 	manager.scheduleLocked()
 }
@@ -582,8 +594,9 @@ func (manager *nativeDownloads) localPlan(drama string, index int) (nativePlan, 
 	}
 	path := filepath.Join(manager.jobDirectory(record.nativeDownloadJob), record.File)
 	if !manager.localFilesValid(*record) {
-		record.State, record.Error = "failed", "本地文件缺失，请重新下载"
-		record.Archived = false
+		// Missing files are not an explicit Downloads deletion. Preserve the
+		// completed receipt so playback/collection updates cannot bypass it.
+		record.Error = "本地文件缺失，请在已下载中删除该集后重新下载"
 		_ = manager.saveLocked()
 		return nativePlan{}, true, errNativeLocalFile
 	}

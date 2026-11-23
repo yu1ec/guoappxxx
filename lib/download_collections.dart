@@ -151,7 +151,7 @@ class DownloadCollectionUpdater extends ChangeNotifier {
         );
       }
       _check(drama.source);
-      status = added == 0 ? '本剧暂无需要补充的分集' : '已加入 $added 集；已有完整文件和暂停中的任务保留';
+      status = added == 0 ? '本剧暂无需要补充的分集' : '已加入 $added 集；已下载和暂停中的任务保留';
     } catch (value) {
       error = value.toString();
     } finally {

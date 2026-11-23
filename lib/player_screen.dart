@@ -23,6 +23,7 @@ import 'danmaku_overlay.dart';
 import 'detail_screen.dart';
 import 'home_screen.dart';
 import 'download_picker.dart';
+import 'playback_downloads.dart';
 import 'downloads_screen.dart';
 import 'follow_state.dart';
 import 'local_store.dart';
@@ -96,6 +97,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   double? _lanFirstPosition;
   String? _savedProgressKey;
   final _health = PlaybackHealth();
+  late final PlaybackDownloads _downloads;
   Timer? _saveTimer;
   Timer? _healthTimer;
   Timer? _errorTimer;
@@ -192,6 +194,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     WidgetsBinding.instance.addObserver(this);
     _index = widget.initialIndex;
     _profileEpoch = widget.handoff?.profileEpoch ?? widget.store.profileEpoch;
+    _downloads = PlaybackDownloads(
+      widget.repository,
+      widget.detail.drama,
+      allowed: () =>
+          widget.store.profileEpoch == _profileEpoch &&
+          widget.store.canDownload &&
+          widget.store.allowsSource(widget.detail.drama.source),
+    );
     final preferences = widget.store.playbackPreferences;
     _speed = preferences.speed;
     _requestedQuality = preferences.quality;
@@ -1843,6 +1853,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _preloader.dispose();
     _generation++;
     WidgetsBinding.instance.removeObserver(this);
+    _downloads.dispose();
     _saveTimer?.cancel();
     _healthTimer?.cancel();
     _errorTimer?.cancel();
@@ -2586,19 +2597,23 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 
-  Widget _episodePanel({bool compact = false}) => ColoredBox(
-    color: Theme.of(context).colorScheme.surface,
-    child: PlayerEpisodeGrid(
-      episodes: widget.detail.episodes,
-      currentIndex: _index,
-      compact: compact,
-      title: compact ? '剧集' : '选集',
-      note:
-          widget.detail.drama.releaseStatus.isNotEmpty &&
-              widget.detail.drama.releaseStatus != 'unknown'
-          ? widget.detail.drama.releaseLabel
-          : '',
-      onSelected: (index) => _play(index),
+  Widget _episodePanel({bool compact = false}) => ListenableBuilder(
+    listenable: _downloads,
+    builder: (context, _) => ColoredBox(
+      color: Theme.of(context).colorScheme.surface,
+      child: PlayerEpisodeGrid(
+        episodes: widget.detail.episodes,
+        downloadedNumbers: _downloads.completed,
+        currentIndex: _index,
+        compact: compact,
+        title: compact ? '剧集' : '选集',
+        note:
+            widget.detail.drama.releaseStatus.isNotEmpty &&
+                widget.detail.drama.releaseStatus != 'unknown'
+            ? widget.detail.drama.releaseLabel
+            : '',
+        onSelected: (index) => _play(index),
+      ),
     ),
   );
 }
