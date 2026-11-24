@@ -255,7 +255,9 @@ func (client *yeguoAPIClient) requestClient() *http.Client {
 			}
 		}
 		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		// Match the main native transport: Android Go needs the embedded public
+		// CA bundle; a nil RootCAs silently drops it for this dedicated client.
+		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: systemCertPoolWithBundle()}
 		if client.downloader.cfg.InsecureTLS {
 			transport.TLSClientConfig = transport.TLSClientConfig.Clone()
 			transport.TLSClientConfig.InsecureSkipVerify = true
