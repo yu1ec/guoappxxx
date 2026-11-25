@@ -16,21 +16,32 @@ options = parser.parse_args()
 variant = BuildVariant(options.all_sources)
 
 environment = os.environ.copy()
-# CI 的默认值是 proxy.golang.org（偶发流中断）；setdefault 不覆盖已设值，
-# 手动设了 GOPROXY 时以手动值为准。多代理轮换：前一个下载失败就切下一个。
+# CI 的默认值是 proxy.golang.org（偶发流中断）；未设 GOPROXY 时用多代理轮换。
+# goproxy.cn 对 golang.org/toolchain 会返回 403，需把 goproxy.io 放在前面以便
+# GOTOOLCHAIN=auto 时能下载 go.mod 声明的 Go 版本。
 if 'GOPROXY' not in os.environ:
-    environment['GOPROXY'] = 'https://goproxy.cn,https://proxy.golang.org,direct'
+    environment['GOPROXY'] = (
+        'https://goproxy.io,https://goproxy.cn,https://proxy.golang.org,direct')
 environment.setdefault('GOSUMDB', 'off')
 environment['CGO_ENABLED'] = '1'
 go = shutil.which('go')
 if not go:
-    raise SystemExit('请先安装 Go 1.24.1 或更新版本。')
+    raise SystemExit('请先安装 Go 1.25.0 或更新版本。')
 bootstrap_env = environment.copy()
 bootstrap_env['GOSUMDB'] = os.environ.get('GOSUMDB', 'sum.golang.org')
 if bootstrap_env['GOSUMDB'] == 'off':
     bootstrap_env['GOSUMDB'] = 'sum.golang.org'
-toolchain_root = subprocess.check_output([go, 'env', 'GOROOT'], cwd=root / 'native',
-    env=bootstrap_env, text=True).strip()
+environment.setdefault('GOTOOLCHAIN', os.environ.get('GOTOOLCHAIN', 'auto'))
+bootstrap_env['GOTOOLCHAIN'] = environment['GOTOOLCHAIN']
+try:
+    toolchain_root = subprocess.check_output([go, 'env', 'GOROOT'], cwd=root / 'native',
+        env=bootstrap_env, text=True, stderr=subprocess.STDOUT).strip()
+except subprocess.CalledProcessError as error:
+    hint = error.output.strip() if isinstance(error.output, str) else ''
+    raise SystemExit(
+        '无法解析 Go 工具链（native/go.mod 需要 Go 1.25+）。'
+        '请在项目目录启用 go 1.25+（例如 mise install），或检查 GOPROXY 是否可下载 toolchain。'
+        + (('\n' + hint) if hint else '')) from error
 go = str(Path(toolchain_root) / 'bin' / ('go.exe' if platform.system() == 'Windows' else 'go'))
 
 def build(goos, architecture, compiler, output, extra=None):

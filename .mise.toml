@@ -1,0 +1,42 @@
+# 进入本目录后执行: mise trust && mise install
+# 然后用 mise exec -- <命令>，或确保 shell 已 hook mise（zsh 一般已在 ~/.zshrc 里）。
+
+[tools]
+go = "1.25.0"
+python = "3.12"
+java = "corretto-17"
+
+[env]
+# Flutter 未走 mise 插件，使用本机已有 stable（需 3.47.4，与 CI 一致）
+_.path = ["{{env.HOME}}/flutter/bin"]
+ANDROID_HOME = "{{env.HOME}}/Library/Android/sdk"
+ANDROID_SDK_ROOT = "{{env.HOME}}/Library/Android/sdk"
+ANDROID_NDK_HOME = "{{env.HOME}}/Library/Android/sdk/ndk/28.2.13676358"
+GOPROXY = "https://goproxy.io,https://goproxy.cn,https://proxy.golang.org,direct"
+GOSUMDB = "off"
+GOTOOLCHAIN = "auto"
+
+[tasks.doctor]
+description = "检查 Go / Python / Java / Flutter 与 Android SDK、NDK"
+run = [
+  "go version",
+  "python3 --version",
+  "java -version",
+  "flutter --version",
+  "test -d \"${ANDROID_HOME}\"",
+  "test -d \"${ANDROID_NDK_HOME}\"",
+  "echo Android SDK: ${ANDROID_HOME}",
+  "echo Android NDK: ${ANDROID_NDK_HOME}",
+]
+
+[tasks.pub-get]
+description = "Flutter 依赖（锁文件）"
+run = "flutter pub get --enforce-lockfile"
+
+[tasks.native-android-arm64]
+description = "编译 Android arm64 原生核心 libduanju_core.so"
+run = "python3 scripts/build_native.py --platform android --abi arm64-v8a"
+
+[tasks.build-android]
+description = "打 Android APK（短剧视界）"
+run = "python3 scripts/build_android.py"

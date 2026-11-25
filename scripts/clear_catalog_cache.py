@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 APPS = {
-    "zhen": ("全剧视界", "quanjushijie.exe"),
-    "hong": ("短剧视界", "duanjushijie.exe"),
+    "zhen": ("水果园", "quanjushijie.exe"),
+    "hong": ("水果园", "duanjushijie.exe"),
 }
 
 

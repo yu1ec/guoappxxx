@@ -11,7 +11,7 @@ class BuildVariant:
 
     @property
     def name(self):
-        return '全剧视界' if self.all_sources else '短剧视界'
+        return '水果园'
 
     @property
     def arguments(self):

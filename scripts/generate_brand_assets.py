@@ -28,7 +28,7 @@ for entry in contents['images']:
              'ios/Runner/Assets.xcassets/AppIcon.appiconset/' + entry['filename'])
 save(icon.resize((256, 256), Image.Resampling.LANCZOS), 'windows/runner/resources/app_icon.ico')
 font = ImageFont.truetype(str(options.font), 76)
-for name, resource in [('短剧视界', 'tv_banner'), ('全剧视界', 'tv_banner_all_sources')]:
+for name, resource in [('水果园', 'tv_banner'), ('水果园', 'tv_banner_all_sources')]:
     banner = Image.new('RGB', (640, 360), '#101114')
     banner.paste(icon.resize((180, 180), Image.Resampling.LANCZOS), (44, 90))
     draw = ImageDraw.Draw(banner)

@@ -25,7 +25,7 @@ def is_all_sources(slug):
 
 
 def edition_name(slug):
-    return '全剧视界' if is_all_sources(slug) else '短剧视界'
+    return '水果园'
 
 environment = os.environ.copy()
 environment.setdefault('GOPROXY', 'https://goproxy.cn,https://proxy.golang.org,direct')

@@ -41,10 +41,7 @@ var (
 
 // 名称由 slug 推导，避免通过 -X 传入中文在 Windows 上被系统编码破坏。
 func editionName() string {
-	if editionSlug == "quanjushijie" {
-		return "全剧视界"
-	}
-	return "短剧视界"
+	return "水果园"
 }
 
 //go:embed web
