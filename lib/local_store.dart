@@ -413,6 +413,7 @@ class LocalStore extends ChangeNotifier {
   bool get autoExport => !locked && (_bool('autoExport') ?? false);
   bool get exportPosters => !locked && (_bool('exportPosters') ?? false);
   bool get accelerateDownload => _bool('accelerateDownload') ?? true;
+  bool get restrictedUnlocked => _bool('restrictedUnlocked') ?? false;
   String? get skippedUpdateVersion =>
       _configurationError == null ? _string('updateSkippedVersion') : null;
   String get source {
@@ -568,6 +569,8 @@ class LocalStore extends ChangeNotifier {
 
   Future<void> setAccelerateDownload(bool value) =>
       _setting('accelerateDownload', value);
+  Future<void> setRestrictedUnlocked(bool value) =>
+      _setting('restrictedUnlocked', value);
   Future<void> setSkippedUpdateVersion(String? value) => value == null
       ? _queue(() async {
           if (locked) return;

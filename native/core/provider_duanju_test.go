@@ -34,8 +34,8 @@ func TestDuanjuRegistryKeepsDistinctIdentitiesFromExistingSources(t *testing.T) 
 	for _, source := range existing {
 		seen[source] = true
 	}
-	if len(duanjuProviderCatalog) != 11 {
-		t.Fatalf("duanju catalog should register 11 sources, got %d", len(duanjuProviderCatalog))
+	if len(duanjuProviderCatalog) != 21 {
+		t.Fatalf("duanju catalog should register 21 sources, got %d", len(duanjuProviderCatalog))
 	}
 	for _, spec := range duanjuProviderCatalog {
 		if seen[spec.ID] {
@@ -142,6 +142,34 @@ func TestDuanjuGuanguoPostsJSONBodyAndReadsEpisodes(t *testing.T) {
 	}
 	if items[0].Cover != "https://pic.cdn.example.cn/a.jpg" {
 		t.Fatalf("guanguo cover is wrong: %q", items[0].Cover)
+	}
+}
+
+func TestDuanjuUsesMaccmsAutoRecognizesNewBuiltinMaccmsSources(t *testing.T) {
+	for _, source := range []string{sourceMiguo, sourceShiguo, sourceKanguo} {
+		if !duanjuUsesMaccmsAuto(source) {
+			t.Fatalf("%s should use the MacCMS auto template", source)
+		}
+	}
+	for _, source := range []string{sourceHuaguo, sourceWuguo, sourceWangguo, sourceFaguo} {
+		if duanjuUsesMaccmsAuto(source) {
+			t.Fatalf("%s must stay on the hard-coded MacCMS path", source)
+		}
+	}
+}
+
+func TestDuanjuMaccmsAutoBuiltinParsesHomeCatalog(t *testing.T) {
+	d, server := duanjuFixtureDownloader(t, func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = writer.Write([]byte(`<html><body><a href="/voddetail/77.html" title="士果样本"><img data-original="/pic/77.jpg"></a></body></html>`))
+	})
+	d.providerHosts[sourceShiguo] = server.URL
+	items, more, err := d.fetchMaccmsCustomCatalog(context.Background(), sourceShiguo, 1, "")
+	if err != nil || len(items) != 1 {
+		t.Fatalf("maccms auto catalog failed: %+v %v", items, err)
+	}
+	if items[0].ID != "shiguo:77" || items[0].Source != sourceShiguo || !more {
+		t.Fatalf("maccms auto card identity is wrong: %+v more=%v", items[0], more)
 	}
 }
 
@@ -339,7 +367,12 @@ func TestDuanjuHeguoParsesNextDataWrappedResponses(t *testing.T) {
 }
 
 func TestDuanjuSearchSupportMatchesReferenceScripts(t *testing.T) {
-	supported := []string{sourceYaguo, sourceMaoguo, sourceFanguo, sourceGuanguo, sourceHeguo, sourceXingguo, sourceHuaguo, sourceNiuguo, sourceWangguo, sourceFaguo, sourceWuguo}
+	supported := []string{
+		sourceYaguo, sourceMaoguo, sourceFanguo, sourceGuanguo, sourceHeguo, sourceXingguo,
+		sourceHuaguo, sourceNiuguo, sourceWangguo, sourceFaguo, sourceWuguo,
+		sourceMiguo, sourceShiguo, sourceNianguo, sourceKanguo, sourceRebo, sourceChengguodj,
+		sourceChaoguo, sourceBilifun, sourceXiongguo, sourceChengguo,
+	}
 	for _, source := range supported {
 		if !duanjuSupportsSearch(source) {
 			t.Fatalf("%s should support online search", source)
@@ -351,7 +384,11 @@ func TestDuanjuSearchSupportMatchesReferenceScripts(t *testing.T) {
 	if duanjuSupportsSearch(sourceHongguo) {
 		t.Fatal("duanju search support leaked onto an existing source")
 	}
-	for _, source := range []string{sourceYaguo, sourceGuanguo, sourceHuaguo, sourceNiuguo, sourceWangguo, sourceFaguo, sourceWuguo} {
+	for _, source := range []string{
+		sourceYaguo, sourceGuanguo, sourceHuaguo, sourceNiuguo, sourceWangguo, sourceFaguo, sourceWuguo,
+		sourceMiguo, sourceShiguo, sourceNianguo, sourceKanguo, sourceRebo, sourceChengguodj,
+		sourceChaoguo, sourceBilifun, sourceXiongguo, sourceChengguo,
+	} {
 		if !duanjuSupportsPaging(source) {
 			t.Fatalf("%s should support paging", source)
 		}

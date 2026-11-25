@@ -25,6 +25,7 @@ import 'settings_screen.dart';
 import 'profiles_screen.dart';
 import 'search_input.dart';
 import 'sources_screen.dart';
+import 'source_switch_dialog.dart';
 import 'batch_download_screen.dart';
 import 'batch_downloads.dart';
 import 'drama_actions.dart';
@@ -972,24 +973,27 @@ class _HomeScreenState extends State<HomeScreen> {
                     overflow: TextOverflow.ellipsis,
                   )
                 : _tab == 0 && widget.store.sources.isNotEmpty
-                ? PopupMenuButton<SourceGroup>(
+                ? InkWell(
                     key: const ValueKey('source-switch'),
-                    tooltip: '切换站源',
-                    enabled: _sourceGroups.length > 1,
-                    onSelected: _changeGroup,
-                    itemBuilder: (_) => [
-                      for (final group in _sourceGroups)
-                        PopupMenuItem(
-                          value: group,
-                          child: Row(
-                            children: [
-                              Expanded(child: Text(group.name)),
-                              if (group.id == _group.id)
-                                const Icon(Icons.check_rounded, size: 20),
-                            ],
+                    onTap: widget.store.sources.length < 2
+                        ? null
+                        : () => showSourceSwitchDialog(
+                            context,
+                            sources: widget.store.sources,
+                            current: _source,
+                            allSources: _allSources,
+                            showRestricted: widget.store.restrictedUnlocked,
+                            onSelected: (source, {required bool allSources}) {
+                              if (allSources) {
+                                _changeSource(
+                                  widget.store.sources.first,
+                                  allSources: true,
+                                );
+                              } else {
+                                _changeSource(source);
+                              }
+                            },
                           ),
-                        ),
-                    ],
                     child: SizedBox(
                       height: 48,
                       child: Row(
@@ -1004,7 +1008,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ),
-                          if (_sourceGroups.length > 1)
+                          if (widget.store.sources.length > 1)
                             const Icon(Icons.expand_more_rounded),
                         ],
                       ),

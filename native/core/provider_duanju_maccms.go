@@ -454,8 +454,8 @@ func (d *Downloader) fetchMaccmsCatalogPage(ctx context.Context, source string, 
 		} else {
 			address = fmt.Sprintf("%s%s%d---.html", base, strings.SplitN(class, "---.html", 2)[0], page)
 		}
-	case isCustomMaccmsSource(source):
-		// 自定义 maccms 站点：按首页信号自动识别模板家族（index.php / myui 系），多候选探测。
+	case duanjuUsesMaccmsAuto(source):
+		// MacCMS 自动模板站：按首页信号识别模板家族（index.php / myui 系），多候选探测。
 		return d.fetchMaccmsCustomCatalog(ctx, source, page, category)
 	default:
 		return nil, false, errors.New("该站源没有网页目录")
@@ -604,7 +604,7 @@ func (d *Downloader) fetchMaccmsDetail(ctx context.Context, source, sourceID str
 		return d.xbpqDetail(ctx, source, base, sourceID, rule)
 	}
 	candidates := maccmsDetailCandidates(source, base, sourceID)
-	if isCustomMaccmsSource(source) {
+	if duanjuUsesMaccmsAuto(source) {
 		// 源类型路由：
 		//  - json 源：直走 MacCMS JSON API 模块（详情与播放地址一次拿全），失败不回落网页
 		//    模板猜测（网页猜测对 JSON 站无意义且拖慢），直接报「JSON 接口不可用」。
@@ -709,8 +709,8 @@ func maccmsDetailCandidates(source, base, sourceID string) []string {
 			fmt.Sprintf("%s/zywdetail/%s.html", base, sourceID),
 			fmt.Sprintf("%s/detail/%s.html", base, sourceID),
 		}
-	case isCustomMaccmsSource(source):
-		// 自定义站点：详情页候选由模板探测决定（兼容 index.php、voddetail、xksidetail 等形态）。
+	case duanjuUsesMaccmsAuto(source):
+		// MacCMS 自动模板站：详情页候选由模板探测决定（兼容 index.php、voddetail、xksidetail 等形态）。
 		return nil
 	default:
 		return nil
@@ -852,7 +852,7 @@ func (d *Downloader) searchMaccms(ctx context.Context, source, query string) ([]
 		address = fmt.Sprintf("%s/index.php/vod/search/page/1/wd/%s.html", base, url.PathEscape(query))
 	case source == sourceWangguo:
 		address = fmt.Sprintf("%s/search/%s----------1---.html", base, url.PathEscape(query))
-	case isCustomMaccmsSource(source):
+	case duanjuUsesMaccmsAuto(source):
 		// XBPQ 规则源：搜索走规则「搜索url」。
 		if rule, ok := customXBPQRule(source); ok {
 			return d.xbpqSearch(ctx, source, base, query, rule)
@@ -871,7 +871,7 @@ func (d *Downloader) searchMaccms(ctx context.Context, source, query string) ([]
 	}
 	document, finalURL, err := d.fetchProviderPage(ctx, address, base+"/", duanjuUserAgent)
 	if err != nil {
-		if isCustomMaccmsSource(source) {
+		if duanjuUsesMaccmsAuto(source) {
 			fallback := fmt.Sprintf("%s/index.php/vod/search/wd/%s.html", base, url.PathEscape(query))
 			if !strings.EqualFold(fallback, address) {
 				if retry, _, retryErr := d.fetchProviderPage(ctx, fallback, base+"/", duanjuUserAgent); retryErr == nil {
@@ -881,7 +881,7 @@ func (d *Downloader) searchMaccms(ctx context.Context, source, query string) ([]
 		}
 		return nil, err
 	}
-	custom := isCustomMaccmsSource(source)
+	custom := duanjuUsesMaccmsAuto(source)
 	// 搜索词被站点重定向回首页/分类页时（URL 里认不出搜索路径与关键词），
 	// 首页海报卡会被 maccmsCards 原样端出来，看着"有结果"其实是全站热门——
 	// 判为未命中，交给下面的 GET 形态兜底重试。

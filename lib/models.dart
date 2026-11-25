@@ -20,6 +20,16 @@ class SourceSite {
     'wangguo',
     'faguo',
     'wuguo',
+    'miguo',
+    'shiguo',
+    'nianguo',
+    'kanguo',
+    'rebo',
+    'chengguodj',
+    'chaoguo',
+    'bilifun',
+    'xiongguo',
+    'chengguo',
   }.contains(id);
   bool get pagedSearch =>
       id == 'fanqie' ||
@@ -42,6 +52,16 @@ class SourceSite {
     'wangguo',
     'faguo',
     'wuguo',
+    'miguo',
+    'shiguo',
+    'nianguo',
+    'kanguo',
+    'rebo',
+    'chengguodj',
+    'chaoguo',
+    'bilifun',
+    'xiongguo',
+    'chengguo',
   }.contains(id);
   bool get searchSuggestions => id == 'hongguo';
   String get groupId => switch (id) {
@@ -84,6 +104,16 @@ class SourceSite {
     SourceSite('wangguo', '网果', '短剧网站 · 网页目录'),
     SourceSite('faguo', '发果', '168 短剧 · 网页目录'),
     SourceSite('wuguo', '伍果', '五五短剧 · 网页目录'),
+    SourceSite('miguo', '米果', '大米短剧 · MacCMS 网页'),
+    SourceSite('shiguo', '士果', '短剧巴士 · MacCMS 网页'),
+    SourceSite('nianguo', '廿果', '二八短剧 · MacCMS 网页'),
+    SourceSite('kanguo', '看果', '看看短剧 · MacCMS 网页'),
+    SourceSite('rebo', '热果', '热播短剧 · MacCMS 网页'),
+    SourceSite('chengguodj', '橙果', '橙果短剧 · MacCMS 网页'),
+    SourceSite('chaoguo', '超果', '少儿短剧 · MacCMS 网页'),
+    SourceSite('bilifun', '影果', 'Bili .fun · MacCMS 网页'),
+    SourceSite('xiongguo', '熊果', '熊猫短剧 · MacCMS 网页'),
+    SourceSite('chengguo', '城果', '抖音短剧 · MacCMS 网页'),
   ];
 
   /// 默认开启的站源：红果、番茄、韩小圈、鬼片网、青空次元、A123、爱看机器人。

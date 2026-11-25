@@ -16,8 +16,18 @@ const (
 	sourceHuaguo  = "huaguo"
 	sourceNiuguo  = "niuguo"
 	sourceWangguo = "wangguo"
-	sourceFaguo   = "faguo"
-	sourceWuguo   = "wuguo"
+	sourceFaguo      = "faguo"
+	sourceWuguo      = "wuguo"
+	sourceMiguo      = "miguo"
+	sourceShiguo     = "shiguo"
+	sourceNianguo    = "nianguo"
+	sourceKanguo     = "kanguo"
+	sourceRebo       = "rebo"
+	sourceChengguodj = "chengguodj"
+	sourceChaoguo    = "chaoguo"
+	sourceBilifun    = "bilifun"
+	sourceXiongguo   = "xiongguo"
+	sourceChengguo   = "chengguo"
 
 	duanjuMaxBodyBytes = 8 * 1024 * 1024
 	duanjuUserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -38,7 +48,17 @@ var (
 	niuguoParseURL2 = "http://101.42.92.211:5560"
 	wangguoBaseURL  = "https://www.duanju2.com"
 	faguoBaseURL    = "https://www.xzyx168.com"
-	wuguoBaseURL    = "https://www.duanju55.com"
+	wuguoBaseURL       = "https://www.duanju55.com"
+	miguoBaseURL       = "https://dmxq40.com"
+	shiguoBaseURL      = "https://www.duanju84.com"
+	nianguoBaseURL     = "https://28dj01.com"
+	kanguoBaseURL      = "https://www.kkju.app"
+	reboBaseURL        = "http://v.rbotv.cn"
+	chengguodjBaseURL  = "https://chengguodj.com"
+	chaoguoBaseURL     = "https://www.shanekids.com"
+	bilifunBaseURL     = "https://www.bili-fun.com"
+	xiongguoBaseURL    = "https://www.xiongmao17.com"
+	chengguoBaseURL    = "https://douyinship.click"
 )
 
 type duanjuSourceSpec struct {
@@ -65,6 +85,16 @@ var duanjuProviderCatalog = []duanjuSourceSpec{
 	{ID: sourceWangguo, Name: "网果", Base: wangguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
 	{ID: sourceFaguo, Name: "发果", Base: faguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
 	{ID: sourceWuguo, Name: "伍果", Base: wuguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceMiguo, Name: "米果", Base: miguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceShiguo, Name: "士果", Base: shiguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceNianguo, Name: "廿果", Base: nianguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceKanguo, Name: "看果", Base: kanguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceRebo, Name: "热果", Base: reboBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceChengguodj, Name: "橙果", Base: chengguodjBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceChaoguo, Name: "超果", Base: chaoguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceBilifun, Name: "影果", Base: bilifunBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceXiongguo, Name: "熊果", Base: xiongguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
+	{ID: sourceChengguo, Name: "城果", Base: chengguoBaseURL, Kind: "maccms", Searcher: true, Paged: true},
 }
 
 var duanjuMarkupPattern = regexp.MustCompile(`<[^>]{1,80}>`)
@@ -97,6 +127,16 @@ var duanjuSourceAliases = map[string]string{
 	"wangguo": "wangguo", "duanjuwangzhan": sourceWangguo, "短剧网站": sourceWangguo, "www.duanju2.com": sourceWangguo,
 	"faguo": "faguo", "168": sourceFaguo, "xzyx168": sourceFaguo, "www.xzyx168.com": sourceFaguo,
 	"wuguo": "wuguo", "wuwu": sourceWuguo, "五五": sourceWuguo, "www.duanju55.com": sourceWuguo,
+	"miguo": sourceMiguo, "米果": sourceMiguo, "dmxq40.com": sourceMiguo,
+	"shiguo": sourceShiguo, "士果": sourceShiguo, "www.duanju84.com": sourceShiguo, "duanju84.com": sourceShiguo,
+	"nianguo": sourceNianguo, "廿果": sourceNianguo, "28dj01.com": sourceNianguo,
+	"kanguo": sourceKanguo, "看果": sourceKanguo, "www.kkju.app": sourceKanguo, "kkju.app": sourceKanguo,
+	"rebo": sourceRebo, "热果": sourceRebo, "v.rbotv.cn": sourceRebo, "rbotv.cn": sourceRebo,
+	"chengguodj": sourceChengguodj, "橙果": sourceChengguodj, "chengguodj.com": sourceChengguodj,
+	"chaoguo": sourceChaoguo, "超果": sourceChaoguo, "www.shanekids.com": sourceChaoguo, "shanekids.com": sourceChaoguo,
+	"bilifun": sourceBilifun, "影果": sourceBilifun, "www.bili-fun.com": sourceBilifun, "bili-fun.com": sourceBilifun,
+	"xiongguo": sourceXiongguo, "熊果": sourceXiongguo, "www.xiongmao17.com": sourceXiongguo, "xiongmao17.com": sourceXiongguo,
+	"chengguo": sourceChengguo, "城果": sourceChengguo, "douyinship.click": sourceChengguo,
 }
 
 var duanjuSourcesByName = func() map[string]duanjuSourceSpec {
@@ -114,6 +154,24 @@ func isDuanjuProviderSource(source string) bool {
 	}
 	_, found = customMaccmsSpecFor(canonicalProviderSource(source))
 	return found
+}
+
+// duanjuUsesMaccmsAuto 为内置 MacCMS 自动模板站（非花果/发果/伍果/网果四条硬编码）及 custom: 源。
+func duanjuUsesMaccmsAuto(source string) bool {
+	source = canonicalProviderSource(source)
+	if isCustomMaccmsSource(source) {
+		return true
+	}
+	spec, found := duanjuSourceSpecFor(source)
+	if !found || spec.Kind != "maccms" {
+		return false
+	}
+	switch source {
+	case sourceHuaguo, sourceFaguo, sourceWuguo, sourceWangguo:
+		return false
+	default:
+		return true
+	}
 }
 
 func duanjuSourceSpecFor(source string) (duanjuSourceSpec, bool) {
@@ -173,6 +231,26 @@ func duanjuSourceForHost(host string) string {
 		return sourceFaguo
 	case host == "www.duanju55.com" || host == "duanju55.com":
 		return sourceWuguo
+	case host == "dmxq40.com":
+		return sourceMiguo
+	case host == "www.duanju84.com" || host == "duanju84.com":
+		return sourceShiguo
+	case host == "28dj01.com":
+		return sourceNianguo
+	case host == "www.kkju.app" || host == "kkju.app":
+		return sourceKanguo
+	case host == "v.rbotv.cn" || host == "rbotv.cn":
+		return sourceRebo
+	case host == "chengguodj.com":
+		return sourceChengguodj
+	case host == "www.shanekids.com" || host == "shanekids.com":
+		return sourceChaoguo
+	case host == "www.bili-fun.com" || host == "bili-fun.com":
+		return sourceBilifun
+	case host == "www.xiongmao17.com" || host == "xiongmao17.com":
+		return sourceXiongguo
+	case host == "douyinship.click":
+		return sourceChengguo
 	default:
 		return ""
 	}
@@ -185,8 +263,8 @@ func validDuanjuCategory(source, category string) bool {
 	if len(category) > 128 || strings.ContainsAny(category, "|\\\x00\r\n") {
 		return false
 	}
-	if isCustomMaccmsSource(source) {
-		// 自定义 MacCMS 源分类 ID 允许路径形式（含 /），仅做基础非法字符校验。
+	if isCustomMaccmsSource(source) || duanjuUsesMaccmsAuto(source) {
+		// MacCMS 自动模板源分类 ID 允许路径形式（含 /），仅做基础非法字符校验。
 		return true
 	}
 	switch canonicalProviderSource(source) {

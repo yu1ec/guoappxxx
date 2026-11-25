@@ -20,6 +20,16 @@ void main() {
     return store;
   }
 
+  test('restrictedUnlocked persists across restarts', () async {
+    final store = await create();
+    expect(store.restrictedUnlocked, isFalse);
+    await store.setRestrictedUnlocked(true);
+    expect(store.restrictedUnlocked, isTrue);
+    final restarted = testStore(store.preferences);
+    addTearDown(restarted.dispose);
+    expect(restarted.restrictedUnlocked, isTrue);
+  });
+
   test('restricted sources start switched off', () async {
     final store = await create();
     // 默认开启 = 当前版本可见源里所有「非受限」源；番茄与红果是常驻内置源，

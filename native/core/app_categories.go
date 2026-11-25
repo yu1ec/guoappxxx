@@ -39,8 +39,8 @@ func validNativeCategory(source, category string) bool {
 	if len(category) > 128 || strings.ContainsAny(category, "|\\\x00\r\n") {
 		return false
 	}
-	if isCustomMaccmsSource(source) {
-		// 自定义 MacCMS 源的分类 ID 允许是路径形式（/fenlei/1、/listnews/2 等），
+	if isCustomMaccmsSource(source) || duanjuUsesMaccmsAuto(source) {
+		// MacCMS 自动模板源的分类 ID 允许是路径形式（/fenlei/1、/listnews/2 等），
 		// 上面已排除缓存键分隔符 |、反斜杠与控制字符，这里直接放行。
 		return true
 	}

@@ -38,6 +38,7 @@ class LocalSnapshot {
     'autoExport',
     'exportPosters',
     'sourceSwitches',
+    'restrictedUnlocked',
     'forceLogin',
     // 自定义源是设备级配置（移植自 guoapp3），所有本地用户共用，
     // 必须列入受管字段，否则保存自定义源或加载已有快照会被判为「本地配置字段无效」。
@@ -95,6 +96,7 @@ class LocalSnapshot {
         'autoExport',
         'exportPosters',
         'forceLogin',
+        'restrictedUnlocked',
       }.contains(entry.key.split('.').last);
       if (!owns(entry.key) ||
           (boolean ? entry.value is! bool : entry.value is! String)) {

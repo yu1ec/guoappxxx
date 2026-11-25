@@ -30,7 +30,7 @@ func (d *Downloader) fetchDuanjuCategories(ctx context.Context, source string) (
 	case sourceMaoguo:
 		return d.fetchMaoguoCategories(ctx)
 	}
-	if isCustomMaccmsSource(source) {
+	if duanjuUsesMaccmsAuto(source) {
 		return d.fetchMaccmsCustomCategories(ctx, source)
 	}
 	return nil, errors.New("该站源暂未提供分类")
@@ -56,8 +56,8 @@ func (d *Downloader) fetchDuanjuCatalogPage(ctx context.Context, source string, 
 	case sourceHuaguo, sourceFaguo, sourceWuguo, sourceWangguo:
 		return d.fetchMaccmsCatalogPage(ctx, source, page, category)
 	default:
-		if isCustomMaccmsSource(source) {
-			return d.fetchMaccmsCatalogPage(ctx, source, page, category)
+		if duanjuUsesMaccmsAuto(source) {
+			return d.fetchMaccmsCustomCatalog(ctx, source, page, category)
 		}
 	}
 	return nil, false, errors.New("该站源暂未接入目录")
@@ -83,7 +83,7 @@ func (d *Downloader) fetchDuanjuDetail(ctx context.Context, source, sourceID str
 	case sourceHuaguo, sourceFaguo, sourceWuguo, sourceWangguo:
 		return d.fetchMaccmsDetail(ctx, source, sourceID)
 	default:
-		if isCustomMaccmsSource(source) {
+		if duanjuUsesMaccmsAuto(source) {
 			return d.fetchMaccmsDetail(ctx, source, sourceID)
 		}
 	}
@@ -110,7 +110,7 @@ func (d *Downloader) searchDuanju(ctx context.Context, source, query string) ([]
 	case sourceHuaguo, sourceFaguo, sourceWuguo, sourceWangguo:
 		return d.searchMaccms(ctx, source, query)
 	default:
-		if isCustomMaccmsSource(source) {
+		if duanjuUsesMaccmsAuto(source) {
 			return d.searchMaccms(ctx, source, query)
 		}
 	}

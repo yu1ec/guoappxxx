@@ -235,38 +235,97 @@ Future<void> showAppAboutDialog(
   final version = AppLayout.versionOf(context);
   await showDialog<void>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text('关于$appName'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('版本 $version'),
-          const SizedBox(height: 8),
-          const Text('独立运行，打开即可浏览和播放。观看记录与追剧收藏保存在当前设备。'),
-        ],
-      ),
-      actions: [
-        if (Platform.isAndroid)
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => AppUpdatePage(store: store),
-                ),
-              );
-            },
-            child: const Text('检查更新'),
-          ),
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('关闭'),
-        ),
-      ],
+    builder: (dialogContext) => _AppAboutDialog(
+      parentContext: context,
+      dialogContext: dialogContext,
+      store: store,
+      version: version,
     ),
   );
+}
+
+class _AppAboutDialog extends StatefulWidget {
+  const _AppAboutDialog({
+    required this.parentContext,
+    required this.dialogContext,
+    required this.store,
+    required this.version,
+  });
+
+  final BuildContext parentContext;
+  final BuildContext dialogContext;
+  final LocalStore store;
+  final String version;
+
+  @override
+  State<_AppAboutDialog> createState() => _AppAboutDialogState();
+}
+
+class _AppAboutDialogState extends State<_AppAboutDialog> {
+  static const _requiredTaps = 5;
+  static const _tapWindow = Duration(seconds: 2);
+
+  int _versionTaps = 0;
+  DateTime? _lastVersionTap;
+
+  Future<void> _onVersionTap() async {
+    final now = DateTime.now();
+    if (_lastVersionTap == null ||
+        now.difference(_lastVersionTap!) > _tapWindow) {
+      _versionTaps = 1;
+    } else {
+      _versionTaps++;
+    }
+    _lastVersionTap = now;
+    if (_versionTaps < _requiredTaps) return;
+    _versionTaps = 0;
+    _lastVersionTap = null;
+    final next = !widget.store.restrictedUnlocked;
+    await widget.store.setRestrictedUnlocked(next);
+    if (!widget.parentContext.mounted) return;
+    ScaffoldMessenger.of(widget.parentContext).showSnackBar(
+      SnackBar(
+        content: Text(next ? '已显示限制级选项卡' : '已隐藏限制级选项卡'),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text('关于$appName'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onTap: _onVersionTap,
+              behavior: HitTestBehavior.opaque,
+              child: Text('版本 ${widget.version}'),
+            ),
+            const SizedBox(height: 8),
+            const Text('独立运行，打开即可浏览和播放。观看记录与追剧收藏保存在当前设备。'),
+          ],
+        ),
+        actions: [
+          if (Platform.isAndroid)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(widget.dialogContext);
+                Navigator.push(
+                  widget.parentContext,
+                  MaterialPageRoute<void>(
+                    builder: (_) => AppUpdatePage(store: widget.store),
+                  ),
+                );
+              },
+              child: const Text('检查更新'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(widget.dialogContext),
+            child: const Text('关闭'),
+          ),
+        ],
+      );
 }
 
 class AppUpdatePage extends StatelessWidget {

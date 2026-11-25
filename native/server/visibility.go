@@ -35,6 +35,8 @@ var defaultHiddenSources = map[string]bool{
 	"yaguo": true, "maoguo": true, "fanguo": true, "guanguo": true,
 	"heguo": true, "xingguo": true, "huaguo": true, "niuguo": true,
 	"wangguo": true, "faguo": true, "wuguo": true,
+	"miguo": true, "shiguo": true, "nianguo": true, "kanguo": true, "rebo": true,
+	"chengguodj": true, "chaoguo": true, "bilifun": true, "xiongguo": true, "chengguo": true,
 }
 
 var (
